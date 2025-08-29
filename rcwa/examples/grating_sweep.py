@@ -1,6 +1,5 @@
 from rcwa import Source, Layer, LayerStack, Crystal, Solver, RectangularGrating
 import numpy as np
-from matplotlib import pyplot as plt
 
 
 def solve_system():
@@ -23,5 +22,6 @@ def solve_system():
 
 if __name__ == '__main__':
     results = solve_system()
+    import matplotlib.pyplot as plt
     plt.plot(results['thickness'], results['RTot'])
     plt.show()

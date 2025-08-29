@@ -1,6 +1,5 @@
 import numpy as np
 from rcwa import Material, Layer, LayerStack, Source, Solver, Plotter
-import matplotlib.pyplot as plt
 
 def solve_system():
     startWavelength = 0.25
@@ -29,5 +28,6 @@ def solve_system():
 if __name__ == '__main__':
     results = solve_system()
     angles, wavelengths, R = results['theta'], results['wavelength'], results['RTot']
+    import matplotlib.pyplot as plt
     plt.plot(wavelengths, R)
     plt.show()

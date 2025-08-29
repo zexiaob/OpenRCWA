@@ -1,36 +1,21 @@
-import pandas as pd
 import numpy as np
 import os
-import yaml
+try:
+    import yaml
+except ImportError:  # pragma: no cover - optional dependency
+    yaml = None
 from rcwa.utils import nk_location
 
 def nk_to_complex(data):
-
-    if isinstance(data, np.ndarray):
-        wavelengths = data[:,0]
-
-        if data.shape[1] == 3:
-            nk_complex = data[:,1] + 1j*data[:,2]
-        elif data.shape[1] == 2:
-            nk_complex = data[:,1]
-        else:
-            raise ValueError
-    elif isinstance(data, pd.DataFrame):
-        wavelengths = data.iloc[:,0].values
-
-        if '(nm)' in data.columns[0]:
-            wavelengths = wavelengths / 1000
-
-        if data.shape[1] == 3:
-            nk_complex = data.iloc[:,1].values + 1j*data.iloc[:,2].values
-        elif data.shape[1] == 2:
-            nk_complex = data.iloc[:,1].values
-        else:
-            raise ValueError
-
+    if not isinstance(data, np.ndarray):
+        data = np.asarray(data)
+    wavelengths = data[:, 0]
+    if data.shape[1] == 3:
+        nk_complex = data[:, 1] + 1j * data[:, 2]
+    elif data.shape[1] == 2:
+        nk_complex = data[:, 1]
     else:
-        raise NotImplementedError
-
+        raise ValueError
     return wavelengths, nk_complex
 
 class CSVLoader:
@@ -38,12 +23,79 @@ class CSVLoader:
         self.filename = filename
 
     def load(self):
-        raw_data = pd.read_csv(self.filename)
+        try:
+            raw_data = np.loadtxt(self.filename, delimiter=',')
+        except ValueError:
+            raw_data = np.loadtxt(self.filename, delimiter=',', skiprows=1)
         wavelengths, n_dispersive = nk_to_complex(raw_data)
+        if np.max(wavelengths) > 10:
+            wavelengths = wavelengths / 1000.0
         er_dispersive = np.sqrt(n_dispersive)
         ur_dispersive = np.ones(er_dispersive.shape)
 
         return {'wavelength': wavelengths, 'n': n_dispersive, 'er': er_dispersive, 'ur': ur_dispersive}
+
+
+def load_nk_database_file(filename):
+    with open(filename, encoding='utf-8') as fn:
+        content = fn.read()
+    if 'type: tabulated nk' in content:
+        data_block = content.split('data:')[1]
+        if '|' in data_block:
+            data_block = data_block.split('|', 1)[1]
+        data_lines = []
+        for line in data_block.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if not (line[0].isdigit() or line[0] in '+-.'):
+                break
+            data_lines.append(line)
+        numerical_data = np.array([list(map(float, ln.split())) for ln in data_lines])
+        wavelengths, n_dispersive = nk_to_complex(numerical_data)
+        return {'er': np.square(n_dispersive), 'ur': np.ones(n_dispersive.shape), 'n': n_dispersive,
+                'dispersion_type': 'tabulated', 'wavelength': wavelengths}
+    elif 'type: formula 1' in content:
+        coeffs_line = content.split('coefficients:')[1].strip().splitlines()[0]
+        coeffs = [float(x) for x in coeffs_line.split()]
+        A = coeffs[0]
+        num_terms = int((len(coeffs) - 1) / 2)
+        B_coeffs = [coeffs[2*i+1] for i in range(num_terms)]
+        C_coeffs = [coeffs[2*i+2] for i in range(num_terms)]
+
+        def dispersion_formula_er(wavelength):
+            L = wavelength
+            b_terms = [b * L**2 / (L**2 - c**2) for b, c in zip(B_coeffs, C_coeffs)]
+            return 1 + A + np.sum(b_terms)
+
+        def dispersion_formula_n(wavelength):
+            return np.sqrt(dispersion_formula_er(wavelength))
+
+        def dispersion_formula_ur(wavelength):
+            return 1
+
+        return {'er': dispersion_formula_er, 'ur': dispersion_formula_ur, 'n': dispersion_formula_n,
+                'dispersion_type': 'formula'}
+    elif 'type: formula 2' in content:
+        coeffs_line = content.split('coefficients:')[1].strip().splitlines()[0]
+        coeffs = [float(x) for x in coeffs_line.split()]
+        A, B1, C1, B2, C2 = coeffs
+
+        def dispersion_formula_er(wavelength):
+            b1_term = B1 * wavelength ** 2 / (wavelength ** 2 - C1)
+            b2_term = B2 * wavelength ** 2 / (wavelength ** 2 - C2)
+            return 1 + A + b1_term + b2_term
+
+        def dispersion_formula_n(wavelength):
+            return np.sqrt(dispersion_formula_er(wavelength))
+
+        def dispersion_formula_ur(wavelength):
+            return 1
+
+        return {'er': dispersion_formula_er, 'ur': dispersion_formula_ur, 'n': dispersion_formula_n,
+                'dispersion_type': 'formula'}
+    else:
+        raise ValueError('Unsupported nk data file format')
 
 class RIDatabaseLoader:
 
@@ -51,6 +103,8 @@ class RIDatabaseLoader:
         """
         Loader for RefractiveIndex.info databases
         """
+        if yaml is None:
+            raise ImportError("yaml library is required to use RIDatabaseLoader")
         self.extract_material_database()
 
     def extract_material_database(self):

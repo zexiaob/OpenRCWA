@@ -1,14 +1,26 @@
 import numpy as np
-import scipy as sp
-import scipy.linalg
 import math
 
-inv = np.linalg.inv;
-matrixExponentiate = sp.linalg.expm
-matrixSquareRoot = sp.linalg.sqrtm
-sqrt = np.lib.scimath.sqrt; # Takes sqrt of complex numbers successfully
-sq = np.square;
-eig = sp.linalg.eig # Performs eigendecomposition of identity intuitively (vectors are unit vectors)
+inv = np.linalg.inv
+
+
+def _matrix_function_from_eig(matrix, func):
+    """Evaluate a matrix function by performing an eigen decomposition."""
+    w, v = np.linalg.eig(matrix)
+    return v @ np.diag(func(w)) @ np.linalg.inv(v)
+
+
+def matrixExponentiate(matrix):
+    return _matrix_function_from_eig(matrix, np.exp)
+
+
+def matrixSquareRoot(matrix):
+    return _matrix_function_from_eig(matrix, np.sqrt)
+
+
+sqrt = np.lib.scimath.sqrt  # Takes sqrt of complex numbers successfully
+sq = np.square
+eig = np.linalg.eig  # Performs eigendecomposition of identity intuitively (vectors are unit vectors)
 norm = np.linalg.norm;
 sin = np.sin;
 cos = np.cos;

@@ -4,7 +4,30 @@ from rcwa.harmonics import kx_matrix, ky_matrix
 from rcwa.model.layer import Layer, LayerStack
 from rcwa.solve.results import Results
 from copy import deepcopy
-from progressbar import ProgressBar, Bar, Counter, ETA
+try:
+    from progressbar import ProgressBar, Bar, Counter, ETA
+except Exception:  # pragma: no cover - optional dependency
+    class _NoProgress:
+        def __init__(self, *args, **kwargs):
+            pass
+        def start(self):
+            return self
+        def update(self, *args, **kwargs):
+            pass
+        def finish(self):
+            pass
+
+    def ProgressBar(*args, **kwargs):
+        return _NoProgress()
+
+    def Bar(*args, **kwargs):
+        return None
+
+    def Counter(*args, **kwargs):
+        return None
+
+    def ETA(*args, **kwargs):
+        return None
 from itertools import product
 
 

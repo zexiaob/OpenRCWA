@@ -1,12 +1,15 @@
 from rcwa.shorthand import *
-from .material import Material  
+from .material import Material
 from rcwa.legacy.crystal import Crystal
 from rcwa.core.matrices import MatrixCalculator
 from .material import TensorMaterial
-import matplotlib.pyplot as plt
 from typing import Union, List, Tuple, TYPE_CHECKING
 from numpy.typing import ArrayLike
-from matplotlib.figure import Figure, Axes
+
+if TYPE_CHECKING:  # pragma: no cover - only for type hints
+    from matplotlib.figure import Figure, Axes
+else:  # fallbacks when matplotlib is unavailable
+    Figure = Axes = None
 
 if TYPE_CHECKING:
     from .layer import HalfSpace
@@ -386,7 +389,8 @@ class LayerStack:
                 return self.internal_layers[i].crystal
         return None
 
-    def plot(self, fig: Union[None, Figure] = None, ax: Union[None, Axes] = None) -> Tuple[Figure, Axes]:
+    def plot(self, fig: Union[None, 'Figure'] = None, ax: Union[None, 'Axes'] = None) -> Tuple['Figure', 'Axes']:
+        import matplotlib.pyplot as plt  # Local import to avoid hard dependency
         if fig is None and ax is None:
             fig, ax = plt.subplots()
         elif fig is not None and ax is None:
