@@ -1,7 +1,12 @@
 import pytest
 import os
 import numpy as np
-from rcwa import Material, Source
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from rcwa.model.material import Material
+from rcwa.solve.source import Source
 from rcwa.testing import *
 from rcwa.shorthand import *
 
@@ -198,3 +203,21 @@ def test_dispersive_func_ur():
     mat = Material(er=3, ur=lambda x: x, source=src)
     assert mat.er == 3
     assert mat.ur == 0.1
+
+
+@pytest.mark.unit
+def test_wavelength_dependent_n():
+    src = Source(wavelength=1.0)
+    n_func = lambda wl: 1.5 + 0.1 * wl
+    mat = Material(n=n_func, source=src)
+    assert mat.n == pytest.approx(1.6)
+
+    src.wavelength = 2.0
+    assert mat.n == pytest.approx(1.7)
+
+
+@pytest.mark.unit
+def test_constant_n_material():
+    mat = Material(n=2.0)
+    assert mat.n == pytest.approx(2.0)
+    assert mat.er == pytest.approx(4.0)

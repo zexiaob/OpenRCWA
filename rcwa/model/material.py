@@ -59,17 +59,19 @@ class Material:
         self.dispersive = False
         self.loader = None
 
-        if callable(er) or callable(ur):
+        # Handle direct functional definitions first (formula based)
+        if callable(n):
+            # Refractive index provided as function of wavelength
             self.dispersive = True
-            self._er_dispersive = er
-            self._ur_dispersive = ur
+            self.dispersion_type = 'formula'
+            self._n_dispersive = n
+            # Derive permittivity/permeability from n (assuming non-magnetic unless ur provided)
+            self._er_dispersive = lambda wl: np.square(n(wl))
+            if callable(ur):
+                self._ur_dispersive = ur
+            else:
+                self._ur_dispersive = lambda wl: ur
 
-        if name is not None or database_path is not None:
-            self.dispersive = True
-            self._load_from_database(name, filename=database_path)
-        elif filename is not None:
-            self.dispersive = True
-            self._load_from_nk_table(filename=filename)
         elif callable(er) or callable(ur):
             self.dispersive = True
             self.dispersion_type = 'formula'
@@ -81,14 +83,26 @@ class Material:
                 self._ur_dispersive = ur
             else:
                 self._ur_dispersive = lambda x: ur
+            # Derive refractive index from epsilon and mu when no explicit n is provided
+            self._n_dispersive = lambda wl: np.sqrt(self._er_dispersive(wl) * self._ur_dispersive(wl))
 
-        else:
-            self.dispersive = False
-            if n is None: # If the refractive index is not defined, go with the permittivity
+        # Handle tabulated/database materials
+        if name is not None or database_path is not None:
+            self.dispersive = True
+            self._load_from_database(name, filename=database_path)
+        elif filename is not None:
+            self.dispersive = True
+            self._load_from_nk_table(filename=filename)
+
+        # Constant materials (non-dispersive)
+        if not self.dispersive:
+            if n is None:
+                # If the refractive index is not defined, go with the permittivity
                 self._er = er
                 self._ur = ur
                 self._n = np.sqrt(er*ur)
-            else: # If the refractive index is defined, ignore the permittivity and permeability
+            else:
+                # If the refractive index is defined, ignore the permittivity and permeability
                 self._n = n
                 self._er = np.square(n)
                 self._ur = 1
@@ -214,13 +228,16 @@ class TensorMaterial:
                           - Constant 3x3 array
                           - Function returning 3x3 array given wavelength
                           - Dictionary with tabulated data
+    :param n_tensor: 3x3 refractive index tensor (alternative to epsilon_tensor).
+                     If provided, epsilon_tensor is ignored and computed from n_tensor**2.
+                     Can be constant 3x3 array or function of wavelength.
     :param mu_tensor: 3x3 complex permeability tensor (default: identity matrix)
     :param source: Excitation source to link to material (mandatory for dispersive materials)
     :param name: Material name for identification
     """
     
     def __init__(self, epsilon_tensor=None, mu_tensor=None, source=None, name="anisotropic",
-                 wavelength_range=None, thickness_range=(1e-12, 1e-3)):
+                 wavelength_range=None, thickness_range=(1e-12, 1e-3), n_tensor=None):
         """
         Initialize TensorMaterial with enhanced validation.
         
@@ -232,6 +249,23 @@ class TensorMaterial:
         :param thickness_range: Valid thickness range in meters [min, max]
         """
         # Validate inputs according to ROADMAP requirements
+        # If refractive index tensor is provided, convert to epsilon tensor first
+        if n_tensor is not None and epsilon_tensor is not None:
+            raise ValueError("Specify either epsilon_tensor or n_tensor, not both")
+
+        if n_tensor is not None:
+            if callable(n_tensor):
+                self.dispersive = True
+                self._n_dispersive = lambda wl: np.array(n_tensor(wl), dtype=complex)
+                def eps_from_n(wl):
+                    n_mat = self._n_dispersive(wl)
+                    return np.square(n_mat)
+                epsilon_tensor = eps_from_n
+            else:
+                n_arr = np.array(n_tensor, dtype=complex)
+                self._n_tensor = n_arr
+                epsilon_tensor = np.square(n_arr)
+
         self._validate_inputs(epsilon_tensor, mu_tensor, wavelength_range, thickness_range)
         
         self.name = name
@@ -372,6 +406,19 @@ class TensorMaterial:
                 return self._mu_dispersive(self.source.wavelength)
             else:
                 return self._lookup_tensor(self._mu_tensor_table)
+
+    @property
+    def n_tensor(self) -> np.ndarray:
+        """Get the 3x3 refractive index tensor if defined"""
+        if hasattr(self, '_n_tensor'):
+            return self._n_tensor
+        elif hasattr(self, '_n_dispersive'):
+            if self.source is None:
+                raise ValueError("Source must be set for dispersive materials")
+            return self._n_dispersive(self.source.wavelength)
+        else:
+            # Approximate derivation from epsilon tensor
+            return np.sqrt(self.epsilon_tensor)
     
     def _lookup_tensor(self, tensor_table: np.ndarray) -> np.ndarray:
         """Look up tensor value at current wavelength using interpolation"""
