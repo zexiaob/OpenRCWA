@@ -138,17 +138,18 @@ class Layer(MatrixCalculator):
             
             epsilon_tensor = self.tensor_material.epsilon_tensor
             mu_tensor = self.tensor_material.mu_tensor
-            
-            # For uniform tensor layers, use effective properties for legacy compatibility
-            # The full tensor coupling is handled in the P/Q matrix calculations
-            eps_eff, mu_eff = TensorToConvolutionAdapter.extract_effective_properties(
-                epsilon_tensor, mu_tensor, 'z')
-                
-            matrix_dim = np.prod(n_harmonics) if isinstance(n_harmonics, tuple) else n_harmonics
-            
-            # Directly set the internal attributes to bypass the setter validation
-            self._tensor_er = eps_eff * complexIdentity(matrix_dim)
-            self._tensor_ur = mu_eff * complexIdentity(matrix_dim)
+
+            # Generate convolution matrices for all tensor components
+            conv_matrices = TensorToConvolutionAdapter.tensor_to_convolution_matrices(
+                epsilon_tensor, mu_tensor, n_harmonics
+            )
+
+            # Store full tensor convolution matrices for downstream use
+            self._tensor_conv_matrices = conv_matrices
+
+            # For legacy interfaces expecting scalar er/ur matrices, use zz-components
+            self._tensor_er = conv_matrices['er_zz']
+            self._tensor_ur = conv_matrices['ur_zz']
         else:
             matrix_dim = np.prod(n_harmonics) if isinstance(n_harmonics, tuple) else n_harmonics
             self.er = self.er * complexIdentity(matrix_dim)
