@@ -37,7 +37,8 @@ class TensorToConvolutionAdapter:
         
         For uniform layers (no spatial variation), this creates convolution matrices
         where all 9 tensor components are represented as diagonal matrices scaled by
-        the respective tensor element.
+        the respective tensor element. The returned dictionary uses the project-wide
+        `er_ij`/`ur_ij` naming convention for electric and magnetic tensor components.
         
         :param epsilon_tensor: 3x3 complex permittivity tensor
         :param mu_tensor: 3x3 complex permeability tensor  
@@ -61,17 +62,22 @@ class TensorToConvolutionAdapter:
         # For uniform layers, each tensor component becomes a scaled identity matrix
         convolution_matrices = {}
         
-        # Epsilon tensor components
+        # Permittivity tensor components (use er_ prefix for project-wide consistency)
+        axes = ["x", "y", "z"]
         for i in range(3):
             for j in range(3):
-                component_name = f'eps_{["x", "y", "z"][i]}{["x", "y", "z"][j]}'
-                convolution_matrices[component_name] = epsilon_tensor[i, j] * complexIdentity(matrix_dim)
-        
-        # Mu tensor components  
+                component_name = f'er_{axes[i]}{axes[j]}'
+                convolution_matrices[component_name] = (
+                    epsilon_tensor[i, j] * complexIdentity(matrix_dim)
+                )
+
+        # Permeability tensor components (use ur_ prefix)
         for i in range(3):
             for j in range(3):
-                component_name = f'mu_{["x", "y", "z"][i]}{["x", "y", "z"][j]}'
-                convolution_matrices[component_name] = mu_tensor[i, j] * complexIdentity(matrix_dim)
+                component_name = f'ur_{axes[i]}{axes[j]}'
+                convolution_matrices[component_name] = (
+                    mu_tensor[i, j] * complexIdentity(matrix_dim)
+                )
         
         return convolution_matrices
     

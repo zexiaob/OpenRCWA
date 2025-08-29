@@ -36,14 +36,14 @@ class TestTensorAdapters:
         
         # Should generate 18 matrices (9 for eps, 9 for mu)
         assert len(result) == 18
-        
-        # Check specific tensor components
-        assert result['eps_xx'] == (2.0+0j)
-        assert result['eps_yy'] == (3.0+0j) 
-        assert result['eps_zz'] == (4.0+0j)
-        assert result['mu_xx'] == (1.0+0j)
-        assert result['mu_yy'] == (1.0+0j)
-        assert result['mu_zz'] == (1.0+0j)
+
+        # Check specific tensor components (using er_/ur_ naming)
+        assert result['er_xx'] == (2.0+0j)
+        assert result['er_yy'] == (3.0+0j)
+        assert result['er_zz'] == (4.0+0j)
+        assert result['ur_xx'] == (1.0+0j)
+        assert result['ur_yy'] == (1.0+0j)
+        assert result['ur_zz'] == (1.0+0j)
     
     def test_extract_effective_properties(self, basic_tensors):
         """Test extraction of effective scalar properties."""
