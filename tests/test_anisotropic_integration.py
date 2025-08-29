@@ -4,7 +4,14 @@ Integration tests for anisotropic materials with Fresnel equation validation
 import pytest
 import numpy as np
 from numpy.testing import assert_allclose
-from rcwa import TensorMaterial, Layer, LayerStack, Source, Solver
+import sys, os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from rcwa.model.material import TensorMaterial
+from rcwa.model.layer import Layer, LayerStack
+from rcwa.solve.source import Source
+from rcwa.core.solver import Solver
 from rcwa.utils import rTE, rTM
 
 
