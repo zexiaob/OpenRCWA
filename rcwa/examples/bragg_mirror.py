@@ -4,7 +4,6 @@
 #
 from rcwa import Layer, LayerStack, Source, Solver, Plotter
 import numpy as np
-from matplotlib import pyplot as plt
 
 def solve_system():
     designWavelength = 1.3
@@ -46,4 +45,5 @@ def solve_system():
 if __name__ == '__main__':
     results = solve_system()
     fig, ax = results.plot(x='wavelength', y=['RTot', 'TTot', 'conservation'])
+    import matplotlib.pyplot as plt
     plt.show()

@@ -3,14 +3,12 @@ I think the way this currently works is too convoluted. It needs to be refactore
 
 """
 import numpy as np
-import pandas as pd
 import rcwa
 import os
-from rcwa.utils import CSVLoader, RIDatabaseLoader
+from rcwa.utils import CSVLoader, load_nk_database_file
 import warnings
 from numpy.typing import ArrayLike
 from typing import Union, Callable
-from pydantic import BaseModel, Field, validator, root_validator
 
 
 # SI Unit Conversion Helpers (ROADMAP requirement)
@@ -46,7 +44,14 @@ class Material:
     :param filename: File containing n/k data for the material in question
     :param database_path: Raw file path within database
     """
-    database = RIDatabaseLoader()
+    database = type('SimpleDB', (), {'materials': {
+        'Pt': 'main/Pt/Rakic-BB.yml',
+        'Si': 'main/Si/Schinke.yml',
+        'Ag': 'main/Ag/Johnson.yml',
+        'Ti': 'main/Ti/Johnson.yml',
+        'Au': 'main/Au/Johnson.yml',
+        'SiO2': 'main/SiO2/Radhakrishnan-o.yml',
+    }})()
 
     def __init__(self, name=None, er=1, ur=1, n=None, database_path=None, filename=None, source=None):
         self.name = ''
@@ -113,14 +118,15 @@ class Material:
 
         :param filename: File containing n/k data for material in question
         """
-
         if filename is not None:
             file_to_load = os.path.join(rcwa.nk_dir, 'data', filename)
+            data_dict = load_nk_database_file(file_to_load)
+        elif material_name in Material.database.materials.keys():
+            file_to_load = os.path.join(rcwa.nk_dir, 'data', Material.database.materials[material_name])
+            data_dict = load_nk_database_file(file_to_load)
+        else:
+            raise ValueError("Material not found in database")
 
-        if material_name in self.database.materials.keys():
-            file_to_load = os.path.join(rcwa.nk_dir, 'data', self.database.materials[material_name])
-
-        data_dict = self.database.load(file_to_load)
         self._set_dispersive_nk(data_dict)
 
     @property

@@ -1,4 +1,3 @@
-from matplotlib import pyplot as plt
 import numpy as np
 from typing import Union, Tuple, Optional
 
@@ -184,6 +183,8 @@ class Results:
 
         :returns fig, ax: Figure and Axes objects created with matplotlib pyplot interface
         """
+        import matplotlib.pyplot as plt  # Local import to avoid hard dependency
+
         if fig is None and ax is None:
             fig, ax = plt.subplots()
         elif fig is not None and ax is None:

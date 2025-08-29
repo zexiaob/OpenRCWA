@@ -2,10 +2,9 @@
 # Contact: jordan.e@berkeley.edu
 # Creation Date: 11/01/2019
 #
-from rcwa import Material, Layer, LayerStack, Source, Solver, Plotter
+from rcwa import Material, Layer, LayerStack, Source, Solver
 import numpy as np
-import pandas as pd
-from matplotlib import pyplot as plt
+import warnings
 
 
 def solve_system():
@@ -15,8 +14,6 @@ def solve_system():
 
         source = Source(wavelength=startWavelength)
         si = Material(name='Si')
-        data = pd.DataFrame({'Wavelength (um):': si.wavelengths, 'er': si._er_dispersive, 'n': si._n_dispersive})
-        print(data)
 
         reflectionLayer = Layer(n=1) # Free space
         thin_film = Layer(thickness=0.1, material=si)
@@ -29,11 +26,11 @@ def solve_system():
                 stepWavelength)
 
         results = TMMSolver.solve(wavelength=wavelengths)
-        #Plotter.plotEllipsometrySpectra(TMMSolver.results)
-        fig, ax = Plotter.plotRTSpectra(TMMSolver.results)
+        warnings.warn("example warning")
         return results
 
 
 if __name__ == '__main__':
         results = solve_system()
+        import matplotlib.pyplot as plt
         plt.show()

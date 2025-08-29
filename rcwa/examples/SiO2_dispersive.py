@@ -4,7 +4,6 @@
 #
 from rcwa import Material, Layer, LayerStack, Source, Solver, Plotter
 import numpy as np
-from matplotlib import pyplot as plt
 
 def solve_system():
         startWavelength = 0.25
@@ -29,4 +28,5 @@ def solve_system():
 if __name__ == '__main__':
         results = solve_system()
         fig, ax = results.plot(x='wavelength', y=['RTot', 'TTot', 'conservation'])
+        import matplotlib.pyplot as plt
         plt.show()

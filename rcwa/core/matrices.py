@@ -1,5 +1,5 @@
 from rcwa.shorthand import *
-from autograd import numpy as np
+import numpy as np
 from numpy.typing import ArrayLike
 from typing import Union
 
