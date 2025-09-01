@@ -4,8 +4,14 @@ Tests for TensorMaterial class - anisotropic materials support
 import pytest
 import numpy as np
 from numpy.testing import assert_allclose, assert_array_equal
+import sys, os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 from rcwa.model.material import TensorMaterial
+from rcwa.model.layer import Layer
 from rcwa.solve.source import Source
+from rcwa.utils import tabulated_dispersion
 
 
 @pytest.fixture
@@ -157,6 +163,52 @@ class TestTensorMaterial:
         
         with pytest.raises(ValueError, match="Mu tensor must be 3x3"):
             TensorMaterial(mu_tensor=np.ones((2, 3)), source=source)
+
+    def test_n_tensor_constant(self, source):
+        """Create material from refractive index tensor"""
+        n_tensor = np.diag([1.5, 1.6, 1.7])
+        mat = TensorMaterial(n_tensor=n_tensor, source=source)
+        expected_eps = np.diag(np.square([1.5, 1.6, 1.7]))
+        assert_array_equal(mat.epsilon_tensor, expected_eps)
+        assert_array_equal(mat.n_tensor, n_tensor)
+
+    def test_n_tensor_dispersive(self, source):
+        """Dispersive refractive index tensor"""
+        def n_func(wl):
+            return np.diag([1.0 + wl, 1.5 + 0.5*wl, 2.0 + 0.2*wl])
+
+        mat = TensorMaterial(n_tensor=n_func, source=source)
+        source.wavelength = 1.0
+        eps = mat.epsilon_tensor
+        expected = np.diag([(2.0)**2, (2.0)**2, (2.2)**2])
+        assert_allclose(eps, expected)
+
+    def test_tabulated_dispersion_tensor(self, source):
+        """Tabulated refractive index tensor with interpolation"""
+        wavelengths = [1.0, 2.0]
+        tensors = [
+            np.diag([1.0, 1.5, 2.0]),
+            np.diag([1.1, 1.6, 2.1]),
+        ]
+        n_func = tabulated_dispersion(wavelengths, tensors)
+        mat = TensorMaterial(n_tensor=n_func, source=source)
+        source.wavelength = 1.5
+        expected = np.diag([1.05, 1.55, 2.05])
+        assert_allclose(mat.n_tensor, expected)
+
+        source.wavelength = 0.5
+        with pytest.raises(ValueError):
+            _ = mat.n_tensor
+
+    def test_no_simplification_in_layer(self, source):
+        """Ensure layer retains full tensor without simplification"""
+        tensor = np.array([[2.0, 0.5, 0.1], [0.5, 3.0, 0.2], [0.1, 0.2, 4.0]], dtype=complex)
+        mat = TensorMaterial(epsilon_tensor=tensor, source=source)
+        layer = Layer(tensor_material=mat, thickness=1.0)
+        layer.set_convolution_matrices(1)
+        conv = layer._tensor_conv_matrices
+        assert 'er_xy' in conv
+        assert_allclose(conv['er_xy'], 0.5 * np.eye(1))
     
     def test_energy_conservation_property(self, source):
         """Test that tensor materials can maintain energy conservation"""
