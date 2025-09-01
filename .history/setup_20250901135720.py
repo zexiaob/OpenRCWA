@@ -54,7 +54,6 @@ setuptools.setup(
 	author="Jordan Edmunds (original author)",
 	author_email="jordan.e@berkeley.edu",
 	maintainer="Zeyuan Jin",
-	maintainer_email="zexiaobai233@gmail.com",
 	description="Python Implementation of Rigorous Coupled Wave Analysis",
 	long_description=long_description,
 	long_description_content_type="text/markdown",
