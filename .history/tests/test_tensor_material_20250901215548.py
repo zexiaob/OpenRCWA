@@ -184,7 +184,6 @@ class TestTensorMaterial:
         assert_allclose(eps, expected)
 
 <<<<<<< HEAD
-=======
     def test_tabulated_dispersion_tensor(self, source):
         """Tabulated refractive index tensor with interpolation"""
         wavelengths = [1.0, 2.0]
@@ -201,8 +200,9 @@ class TestTensorMaterial:
         source.wavelength = 0.5
         with pytest.raises(ValueError):
             _ = mat.n_tensor
->>>>>>> 54e7c15 (多波长材料支持)
 
+=======
+>>>>>>> 1a8397e (feat: add wavelength dependent refractive index)
     def test_no_simplification_in_layer(self, source):
         """Ensure layer retains full tensor without simplification"""
         tensor = np.array([[2.0, 0.5, 0.1], [0.5, 3.0, 0.2], [0.1, 0.2, 4.0]], dtype=complex)

@@ -183,25 +183,6 @@ class TestTensorMaterial:
         expected = np.diag([(2.0)**2, (2.0)**2, (2.2)**2])
         assert_allclose(eps, expected)
 
-<<<<<<< HEAD
-=======
-    def test_tabulated_dispersion_tensor(self, source):
-        """Tabulated refractive index tensor with interpolation"""
-        wavelengths = [1.0, 2.0]
-        tensors = [
-            np.diag([1.0, 1.5, 2.0]),
-            np.diag([1.1, 1.6, 2.1]),
-        ]
-        n_func = tabulated_dispersion(wavelengths, tensors)
-        mat = TensorMaterial(n_tensor=n_func, source=source)
-        source.wavelength = 1.5
-        expected = np.diag([1.05, 1.55, 2.05])
-        assert_allclose(mat.n_tensor, expected)
-
-        source.wavelength = 0.5
-        with pytest.raises(ValueError):
-            _ = mat.n_tensor
->>>>>>> 54e7c15 (多波长材料支持)
 
     def test_no_simplification_in_layer(self, source):
         """Ensure layer retains full tensor without simplification"""
