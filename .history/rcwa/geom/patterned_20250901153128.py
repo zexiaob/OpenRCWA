@@ -101,9 +101,9 @@ class PatternedLayer(Layer):
         det = ax * by - ay * bx
         if abs(det) < 1e-30:
             raise ValueError("Degenerate lattice; cannot compute reciprocal vectors")
-        # For A = [a b] with a=(ax,ay), b=(bx,by), we have A^T = [[ax, ay],[bx, by]]
-        # (A^T)^{-1} = 1/det * [[by, -ay], [-bx, ax]]
-        invT = (1.0 / det) * np.array([[by, -ay], [-bx, ax]])  # (A^T)^{-1)
+    # For A = [a b] with a=(ax,ay), b=(bx,by), we have A^T = [[ax, ay],[bx, by]]
+    # (A^T)^{-1} = 1/det * [[by, -ay], [-bx, ax]]
+    invT = (1.0 / det) * np.array([[by, -ay], [-bx, ax]])  # (A^T)^{-1}
         G = 2.0 * np.pi * invT  # Include 2π
         g1 = (float(G[0, 0]), float(G[1, 0]))
         g2 = (float(G[0, 1]), float(G[1, 1]))

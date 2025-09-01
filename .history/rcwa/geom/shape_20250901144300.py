@@ -60,11 +60,11 @@ class Shape(ABC):
         :param material: Material for this shape region, or None for background
         :param params: Named parameters for parameterization support
         """
-        self.material = material
-        self.params = params.copy() if params else {}
-        self._param_dependencies = set(self.params.keys()) if self.params else set()
-        # Subclasses may declare parametric fields; default none
-        self._parametric_fields = tuple()
+    self.material = material
+    self.params = params.copy() if params else {}
+    self._param_dependencies = set(self.params.keys()) if self.params else set()
+    # Subclasses may declare parametric fields; default none
+    self._parametric_fields = tuple()
         
     @abstractmethod
     def contains(self, x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[bool, np.ndarray]:
@@ -193,14 +193,11 @@ class Shape(ABC):
             if callable(value) and (not allowed or key in allowed):
                 try:
                     evaluated_value = value(new_params)
-                except Exception:
-                    # If evaluation fails, keep the callable for later resolution
-                    constructor_args[key] = value
-                else:
-                    # Perform validation after successful evaluation so errors aren't swallowed
                     if key in ['width', 'height', 'radius'] and evaluated_value <= 0:
                         raise ValueError(f"{key.capitalize()} must be positive")
                     constructor_args[key] = evaluated_value
+                except Exception:
+                    constructor_args[key] = value
             else:
                 constructor_args[key] = value
         
@@ -244,13 +241,13 @@ class Rectangle(Shape):
         :param material: Material for this region
         :param params: Additional parameters for parameterization
         """
-        super().__init__(material, **params)
-        self.center = Point(*center)
-        self.width = width
-        self.height = height 
-        self.rotation = rotation
-        self._parametric_fields = ('width', 'height', 'rotation')
-
+    super().__init__(material, **params)
+    self.center = Point(*center)
+    self.width = width
+    self.height = height 
+    self.rotation = rotation
+    self._parametric_fields = ('width', 'height', 'rotation')
+        
         # Update params with current values for consistency
         self.params.update({
             'center': center,
@@ -309,11 +306,11 @@ class Circle(Shape):
         :param material: Material for this region
         :param params: Additional parameters for parameterization
         """
-        super().__init__(material, **params)
-        self.center = Point(*center)
-        self.radius = radius
-        self._parametric_fields = ('radius',)
-
+    super().__init__(material, **params)
+    self.center = Point(*center)
+    self.radius = radius
+    self._parametric_fields = ('radius',)
+        
         self.params.update({
             'center': center,
             'radius': radius
@@ -350,13 +347,13 @@ class Ellipse(Shape):
         :param material: Material for this region
         :param params: Additional parameters for parameterization
         """
-        super().__init__(material, **params)
-        self.center = Point(*center)
-        self.a = a  # Semi-major axis
-        self.b = b  # Semi-minor axis
-        self.rotation = rotation
-        self._parametric_fields = ('a', 'b', 'rotation')
-
+    super().__init__(material, **params)
+    self.center = Point(*center)
+    self.a = a  # Semi-major axis
+    self.b = b  # Semi-minor axis
+    self.rotation = rotation
+    self._parametric_fields = ('a', 'b', 'rotation')
+        
         self.params.update({
             'center': center,
             'a': a,
@@ -664,13 +661,13 @@ class Polygon(Shape):
 
 class RegularPolygon(Polygon):
     """Regular polygon (n-sided with equal sides and angles)."""
-
+    
     def __init__(self, center: Tuple[float, float] = (0, 0),
                  radius: float = 1.0, n_sides: int = None,
                  rotation: float = 0.0, material=None, **params):
         """
         Initialize regular polygon.
-
+        
         :param center: Center position (x, y)
         :param radius: Circumradius (distance from center to vertex)
         :param n_sides: Number of sides (alias: num_sides)
@@ -686,50 +683,27 @@ class RegularPolygon(Polygon):
             raise ValueError("Regular polygon requires n_sides or num_sides >= 3")
         if n_sides < 3:
             raise ValueError("Regular polygon must have at least 3 sides")
-
+        
         # Generate vertices
         angles = np.linspace(0, 2*np.pi, n_sides + 1)[:-1] + rotation
-        vertices = [(center[0] + radius * np.cos(a),
-                     center[1] + radius * np.sin(a)) for a in angles]
-
+        vertices = [(center[0] + radius * np.cos(a), 
+                    center[1] + radius * np.sin(a)) for a in angles]
+        
         # Store original parameters
         self.center = Point(*center)
         self.radius = radius
         self.n_sides = n_sides
         self.rotation = rotation
-
-        super().__init__(vertices, material=material, **params)
-
+        
+    super().__init__(vertices, material=material, **params)
+        
         # Update params with regular polygon specific values
         self.params.update({
             'center': center,
-            'radius': radius,
+            'radius': radius, 
             'n_sides': n_sides,
             'rotation': rotation
         })
-
-    def with_params(self, **kwargs) -> 'RegularPolygon':
-        """Return a new RegularPolygon with updated parameters.
-
-        Supports updating center, radius, n_sides/num_sides, and rotation.
-        """
-        new_params = self.params.copy()
-        new_params.update(kwargs)
-
-        center = kwargs.get('center', (self.center.x, self.center.y))
-        radius = kwargs.get('radius', self.radius)
-        n_sides = kwargs.get('n_sides', new_params.get('num_sides', self.n_sides))
-        rotation = kwargs.get('rotation', self.rotation)
-
-        if n_sides is None or n_sides < 3:
-            raise ValueError("Regular polygon must have at least 3 sides")
-
-        angles = np.linspace(0, 2*np.pi, int(n_sides) + 1)[:-1] + rotation
-        vertices = [(center[0] + radius * np.cos(a),
-                     center[1] + radius * np.sin(a)) for a in angles]
-
-        return RegularPolygon(center=center, radius=radius, n_sides=int(n_sides),
-                              rotation=rotation, material=self.material, **new_params)
 
 
 class TaperedPolygon(Polygon):
@@ -894,10 +868,3 @@ class DifferenceShape(ComplexShape):
             result &= ~inner_shape.contains(x, y)
             
         return result
-
-    def with_params(self, **kwargs) -> 'DifferenceShape':
-        """Propagate parameters to outer and inner shapes properly."""
-        new_outer = self.outer_shape.with_params(**kwargs) if hasattr(self.outer_shape, 'with_params') else self.outer_shape
-        new_inners = [s.with_params(**kwargs) if hasattr(s, 'with_params') else s for s in self.inner_shapes]
-        new_params = {**self.params, **kwargs}
-        return DifferenceShape(new_outer, new_inners, material=self.material, **new_params)

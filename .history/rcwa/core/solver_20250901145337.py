@@ -31,24 +31,6 @@ except Exception:  # pragma: no cover - optional dependency
 from itertools import product
 
 
-def _start_progress_bar(total: int):
-    """Start a progress bar compatible with both progressbar and progressbar2.
-
-    Tries (max_value=...) first (progressbar2), then falls back to (maxval=...)
-    used by older progressbar packages. If ProgressBar is our no-op shim, any
-    signature will work and return a no-op bar.
-    """
-    widgets = [Counter(), f'/{total} ', Bar(), ETA()]
-    try:
-        return ProgressBar(widgets=widgets, max_value=total).start()
-    except TypeError:
-        try:
-            return ProgressBar(widgets=widgets, maxval=total).start()
-        except TypeError:
-            # Best-effort fallback
-            return ProgressBar().start()
-
-
 class Solver:
     """ Main class that invokes all methods necessary to solve an RCWA/TMM simulation
 
@@ -98,12 +80,14 @@ class Solver:
         self.sweep_objects, self.sweep_vars, self.sweep_vals = self._sweeps(*sweep_args, **sweep_kw)
         n_sweeps = len(self.sweep_vals)
 
-        bar = _start_progress_bar(n_sweeps)
+        bar = ProgressBar(widgets=[Counter(), f'/{n_sweeps} ', Bar(), ETA()], max_value=n_sweeps).start()
 
         for i, sweep in enumerate(self.sweep_vals):
+
             self._assign_sweep_vars(sweep)
 
             while not self.converged:
+
                 self._initialize()
                 self._inner_s_matrix()
                 self._global_s_matrix()
@@ -119,21 +103,9 @@ class Solver:
             self.iters = 0
             self.last_RTot = 1
             self.converged = False
+            bar.update(i)
 
-            # Update with current step (1-based looks nicer but keep i for compatibility)
-            try:
-                bar.update(i)
-            except Exception:
-                # Some implementations require +1
-                try:
-                    bar.update(i + 1)
-                except Exception:
-                    pass
-
-        try:
-            bar.finish()
-        except Exception:
-            pass
+        bar.finish()
         self.results = self._package_results()
         return self.results
 

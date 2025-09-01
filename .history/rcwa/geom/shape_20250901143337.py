@@ -62,9 +62,7 @@ class Shape(ABC):
         """
         self.material = material
         self.params = params.copy() if params else {}
-        self._param_dependencies = set(self.params.keys()) if self.params else set()
-        # Subclasses may declare parametric fields; default none
-        self._parametric_fields = tuple()
+        self._param_dependencies = set()
         
     @abstractmethod
     def contains(self, x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[bool, np.ndarray]:
@@ -184,25 +182,23 @@ class Shape(ABC):
         
         # Create new instance, evaluating any parametric properties
         constructor_args = {}
-
-        # Copy all attributes from current instance, evaluating parametric fields
-        allowed = set(self._parametric_fields)
+        
+        # Copy all attributes from current instance
         for key, value in self.__dict__.items():
-            if key == 'params':
-                continue
-            if callable(value) and (not allowed or key in allowed):
-                try:
-                    evaluated_value = value(new_params)
-                except Exception:
-                    # If evaluation fails, keep the callable for later resolution
-                    constructor_args[key] = value
+            if key not in ['params']:  # Skip internal params dict
+                if callable(value) and key in ['width', 'height', 'radius', 'center']:
+                    # Evaluate parametric property functions
+                    try:
+                        evaluated_value = value(new_params)
+                        # Add validation for geometric properties
+                        if key in ['width', 'height', 'radius'] and evaluated_value <= 0:
+                            raise ValueError(f"{key.capitalize()} must be positive")
+                        constructor_args[key] = evaluated_value
+                    except (TypeError, KeyError):
+                        # If it's not a parametric function, just use the value
+                        constructor_args[key] = value
                 else:
-                    # Perform validation after successful evaluation so errors aren't swallowed
-                    if key in ['width', 'height', 'radius'] and evaluated_value <= 0:
-                        raise ValueError(f"{key.capitalize()} must be positive")
-                    constructor_args[key] = evaluated_value
-            else:
-                constructor_args[key] = value
+                    constructor_args[key] = value
         
         # Add new parameters
         constructor_args['params'] = new_params
@@ -249,8 +245,7 @@ class Rectangle(Shape):
         self.width = width
         self.height = height 
         self.rotation = rotation
-        self._parametric_fields = ('width', 'height', 'rotation')
-
+        
         # Update params with current values for consistency
         self.params.update({
             'center': center,
@@ -312,8 +307,7 @@ class Circle(Shape):
         super().__init__(material, **params)
         self.center = Point(*center)
         self.radius = radius
-        self._parametric_fields = ('radius',)
-
+        
         self.params.update({
             'center': center,
             'radius': radius
@@ -355,8 +349,7 @@ class Ellipse(Shape):
         self.a = a  # Semi-major axis
         self.b = b  # Semi-minor axis
         self.rotation = rotation
-        self._parametric_fields = ('a', 'b', 'rotation')
-
+        
         self.params.update({
             'center': center,
             'a': a,
@@ -404,8 +397,8 @@ class Ellipse(Shape):
 class Polygon(Shape):
     """Polygonal shape with arbitrary vertices."""
     
-    def __init__(self, vertices: Union[List[Tuple[float, float]], Callable[[Dict[str, Any]], List[Tuple[float, float]]]], 
-                 holes: Optional[Union[List[List[Tuple[float, float]]], Callable[[Dict[str, Any]], List[List[Tuple[float, float]]]]]] = None,
+    def __init__(self, vertices: List[Tuple[float, float]], 
+                 holes: Optional[List[List[Tuple[float, float]]]] = None,
                  material=None, **params):
         """
         Initialize polygon.
@@ -416,85 +409,32 @@ class Polygon(Shape):
         :param params: Additional parameters for parameterization
         """
         super().__init__(material, **params)
-        self._vertices_template = vertices if callable(vertices) else None
-        self._holes_template = holes if callable(holes) else None
-        resolved_vertices = vertices(params) if callable(vertices) else vertices
-        self.vertices = [Point(*v) for v in (resolved_vertices or [])]
+        self.vertices = [Point(*v) for v in vertices]
         self.holes = []
-        if holes and not callable(holes):
+        if holes:
             self.holes = [[Point(*v) for v in hole] for hole in holes]
-        elif callable(holes):
-            resolved_holes = holes(params)
-            self.holes = [[Point(*v) for v in hole] for hole in (resolved_holes or [])]
-        self._parametric_fields = ('_vertices_template', '_holes_template')
-
+        
         # Validate polygon
         self._validate_polygon()
-        # Enforce orientations: outer CCW, holes CW
-        self._ensure_orientations()
-        # Validate holes containment
-        self._validate_holes_inside()
-
+        
         self.params.update({
-            'vertices': resolved_vertices if not callable(vertices) else 'template',
-            'holes': (holes or []) if not callable(holes) else 'template'
+            'vertices': vertices,
+            'holes': holes or []
         })
-
-    @classmethod
-    def from_template(cls, template_func: Callable[[Dict[str, Any]], Tuple[List[Tuple[float, float]], Optional[List[List[Tuple[float, float]]]]]],
-                      material=None, **params) -> 'Polygon':
-        """
-        Build a polygon from a template function returning (vertices, holes).
-        The template will be retained for future with_params evaluations.
-        """
-        verts, holes = template_func(params)
-        poly = cls(verts, holes=holes, material=material, **params)
-        poly._vertices_template = lambda p: template_func(p)[0]
-        poly._holes_template = lambda p: template_func(p)[1]
-        return poly
     
     def _validate_polygon(self):
         """Validate polygon geometry."""
         if len(self.vertices) < 3:
             raise ValueError("Polygon must have at least 3 vertices")
         
-        # Check for self-intersections (basic check)
-        self._check_vertex_order()
-        self._check_self_intersection()
+    # Check for self-intersections (basic check)
+    self._check_vertex_order()
+    self._check_self_intersection()
         
         # Validate holes
         for hole in self.holes:
             if len(hole) < 3:
                 raise ValueError("Hole must have at least 3 vertices")
-
-    def _ensure_orientations(self):
-        """Ensure exterior is CCW and holes are CW for robustness."""
-        def signed_area(pts: List[Point]) -> float:
-            area = 0.0
-            n = len(pts)
-            for i in range(n):
-                j = (i + 1) % n
-                area += pts[i].x * pts[j].y - pts[j].x * pts[i].y
-            return area / 2.0
-        # Exterior CCW
-        if signed_area(self.vertices) < 0:
-            self.vertices.reverse()
-        # Holes CW
-        for hole in self.holes:
-            if signed_area(hole) > 0:
-                hole.reverse()
-
-    def _validate_holes_inside(self):
-        """Check that holes lie within the outer polygon and do not self-intersect with boundary."""
-        if not self.holes:
-            return
-        # Simple check: all hole vertices must be inside outer polygon
-        for hole in self.holes:
-            xs = np.array([p.x for p in hole])
-            ys = np.array([p.y for p in hole])
-            inside = self._point_in_polygon(xs, ys, self.vertices)
-            if not np.all(inside):
-                warnings.warn("Hole vertices found outside outer polygon; geometry may be invalid.", UserWarning)
     
     def _check_vertex_order(self):
         """Check if vertices are in consistent order and warn if needed."""
@@ -592,33 +532,12 @@ class Polygon(Shape):
             
             # Check if ray crosses edge
             cond1 = (yi > y) != (yj > y)
-            # Avoid division by zero on horizontal edges
-            denom = (yj - yi)
-            cond2 = np.zeros_like(x, dtype=bool)
-            non_horizontal = np.abs(denom) > 1e-18
-            if np.any(non_horizontal):
-                x_intersect = (xj - xi) * (y[non_horizontal] - yi) / denom + xi
-                cond2[non_horizontal] = x[non_horizontal] < x_intersect
+            cond2 = x < (xj - xi) * (y - yi) / (yj - yi) + xi
             
             inside ^= cond1 & cond2
             j = i
             
         return inside
-
-    def with_params(self, **kwargs) -> 'Polygon':
-        """Evaluate template-based vertices/holes against new params."""
-        new_params = self.params.copy()
-        new_params.update(kwargs)
-        # Resolve templates if present
-        if self._vertices_template is not None:
-            verts = self._vertices_template(new_params)
-        else:
-            verts = [(v.x, v.y) for v in self.vertices]
-        if self._holes_template is not None:
-            holes = self._holes_template(new_params)
-        else:
-            holes = [[(p.x, p.y) for p in hole] for hole in self.holes] if self.holes else None
-        return Polygon(verts, holes=holes, material=self.material, **new_params)
     
     def get_bounds(self) -> Tuple[float, float, float, float]:
         """Get bounding box of polygon."""
@@ -664,13 +583,13 @@ class Polygon(Shape):
 
 class RegularPolygon(Polygon):
     """Regular polygon (n-sided with equal sides and angles)."""
-
+    
     def __init__(self, center: Tuple[float, float] = (0, 0),
                  radius: float = 1.0, n_sides: int = None,
                  rotation: float = 0.0, material=None, **params):
         """
         Initialize regular polygon.
-
+        
         :param center: Center position (x, y)
         :param radius: Circumradius (distance from center to vertex)
         :param n_sides: Number of sides (alias: num_sides)
@@ -686,50 +605,27 @@ class RegularPolygon(Polygon):
             raise ValueError("Regular polygon requires n_sides or num_sides >= 3")
         if n_sides < 3:
             raise ValueError("Regular polygon must have at least 3 sides")
-
+        
         # Generate vertices
         angles = np.linspace(0, 2*np.pi, n_sides + 1)[:-1] + rotation
-        vertices = [(center[0] + radius * np.cos(a),
-                     center[1] + radius * np.sin(a)) for a in angles]
-
+        vertices = [(center[0] + radius * np.cos(a), 
+                    center[1] + radius * np.sin(a)) for a in angles]
+        
         # Store original parameters
         self.center = Point(*center)
         self.radius = radius
         self.n_sides = n_sides
         self.rotation = rotation
-
+        
         super().__init__(vertices, material=material, **params)
-
+        
         # Update params with regular polygon specific values
         self.params.update({
             'center': center,
-            'radius': radius,
+            'radius': radius, 
             'n_sides': n_sides,
             'rotation': rotation
         })
-
-    def with_params(self, **kwargs) -> 'RegularPolygon':
-        """Return a new RegularPolygon with updated parameters.
-
-        Supports updating center, radius, n_sides/num_sides, and rotation.
-        """
-        new_params = self.params.copy()
-        new_params.update(kwargs)
-
-        center = kwargs.get('center', (self.center.x, self.center.y))
-        radius = kwargs.get('radius', self.radius)
-        n_sides = kwargs.get('n_sides', new_params.get('num_sides', self.n_sides))
-        rotation = kwargs.get('rotation', self.rotation)
-
-        if n_sides is None or n_sides < 3:
-            raise ValueError("Regular polygon must have at least 3 sides")
-
-        angles = np.linspace(0, 2*np.pi, int(n_sides) + 1)[:-1] + rotation
-        vertices = [(center[0] + radius * np.cos(a),
-                     center[1] + radius * np.sin(a)) for a in angles]
-
-        return RegularPolygon(center=center, radius=radius, n_sides=int(n_sides),
-                              rotation=rotation, material=self.material, **new_params)
 
 
 class TaperedPolygon(Polygon):
@@ -806,16 +702,6 @@ class ComplexShape(Shape):
         
         hash_str = json.dumps(hash_dict, sort_keys=True, default=str)
         return hashlib.md5(hash_str.encode()).hexdigest()
-
-    def with_params(self, **kwargs) -> 'ComplexShape':
-        """Propagate parameter updates to all child shapes."""
-        updated = []
-        for s in self.shapes:
-            if hasattr(s, 'with_params'):
-                updated.append(s.with_params(**kwargs))
-            else:
-                updated.append(s)
-        return self.__class__(updated, material=self.material, **{**self.params, **kwargs})
 
 
 class UnionShape(ComplexShape):
@@ -894,10 +780,3 @@ class DifferenceShape(ComplexShape):
             result &= ~inner_shape.contains(x, y)
             
         return result
-
-    def with_params(self, **kwargs) -> 'DifferenceShape':
-        """Propagate parameters to outer and inner shapes properly."""
-        new_outer = self.outer_shape.with_params(**kwargs) if hasattr(self.outer_shape, 'with_params') else self.outer_shape
-        new_inners = [s.with_params(**kwargs) if hasattr(s, 'with_params') else s for s in self.inner_shapes]
-        new_params = {**self.params, **kwargs}
-        return DifferenceShape(new_outer, new_inners, material=self.material, **new_params)

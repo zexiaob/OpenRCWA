@@ -57,19 +57,19 @@ class PatternedLayer(Layer):
             thickness=thickness,
             material=background_material if isinstance(background_material, Material) else None,
             tensor_material=background_material if isinstance(background_material, TensorMaterial) else None
-    )
+        )
         
         # Override homogeneous flag since we have patterns
         self.homogenous = False
-
+        
         # Store pattern-specific attributes
-        self.lattice = lattice
+    self.lattice = lattice
         self.shapes = shapes.copy() if shapes else []
         self.background_material = background_material
         self.raster_config = raster_config or RasterConfig()
-        self.params = params.copy() if params else {}
-        # Track global in-plane rotation (radians) for caching and transforms
-        self.rotation_z = float(self.params.get('rotation_z', 0.0))
+    self.params = params.copy() if params else {}
+    # Track global in-plane rotation (radians) for caching and transforms
+    self.rotation_z: float = float(self.params.get('rotation_z', 0.0))
         
         # Validate inputs
         self._validate_inputs()
@@ -101,9 +101,7 @@ class PatternedLayer(Layer):
         det = ax * by - ay * bx
         if abs(det) < 1e-30:
             raise ValueError("Degenerate lattice; cannot compute reciprocal vectors")
-        # For A = [a b] with a=(ax,ay), b=(bx,by), we have A^T = [[ax, ay],[bx, by]]
-        # (A^T)^{-1} = 1/det * [[by, -ay], [-bx, ax]]
-        invT = (1.0 / det) * np.array([[by, -ay], [-bx, ax]])  # (A^T)^{-1)
+        invT = (1.0 / det) * np.array([[by, -bx], [-ay, ax]])  # (A^T)^{-1}
         G = 2.0 * np.pi * invT  # Include 2π
         g1 = (float(G[0, 0]), float(G[1, 0]))
         g2 = (float(G[0, 1]), float(G[1, 1]))
@@ -188,11 +186,11 @@ class PatternedLayer(Layer):
         
         # Handle layer-level parameter updates
         thickness = kwargs.get('thickness', self.thickness)
-        lattice = kwargs.get('lattice', self.lattice)
+    lattice = kwargs.get('lattice', self.lattice)
         background_material = kwargs.get('background_material', self.background_material)
-        # optional rotation update: expect radians named rotation_z
-        rotation_z = kwargs.get('rotation_z', self.rotation_z)
-        new_params['rotation_z'] = float(rotation_z)
+    # optional rotation update (degrees or radians not assumed; expect radians named rotation_z)
+    rotation_z = kwargs.get('rotation_z', self.rotation_z)
+    new_params['rotation_z'] = float(rotation_z)
 
         return PatternedLayer(
             thickness=thickness,

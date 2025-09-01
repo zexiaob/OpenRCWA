@@ -708,29 +708,6 @@ class RegularPolygon(Polygon):
             'rotation': rotation
         })
 
-    def with_params(self, **kwargs) -> 'RegularPolygon':
-        """Return a new RegularPolygon with updated parameters.
-
-        Supports updating center, radius, n_sides/num_sides, and rotation.
-        """
-        new_params = self.params.copy()
-        new_params.update(kwargs)
-
-        center = kwargs.get('center', (self.center.x, self.center.y))
-        radius = kwargs.get('radius', self.radius)
-        n_sides = kwargs.get('n_sides', new_params.get('num_sides', self.n_sides))
-        rotation = kwargs.get('rotation', self.rotation)
-
-        if n_sides is None or n_sides < 3:
-            raise ValueError("Regular polygon must have at least 3 sides")
-
-        angles = np.linspace(0, 2*np.pi, int(n_sides) + 1)[:-1] + rotation
-        vertices = [(center[0] + radius * np.cos(a),
-                     center[1] + radius * np.sin(a)) for a in angles]
-
-        return RegularPolygon(center=center, radius=radius, n_sides=int(n_sides),
-                              rotation=rotation, material=self.material, **new_params)
-
 
 class TaperedPolygon(Polygon):
     """Polygon whose cross-section linearly tapers along z (0..thickness)."""
@@ -894,10 +871,3 @@ class DifferenceShape(ComplexShape):
             result &= ~inner_shape.contains(x, y)
             
         return result
-
-    def with_params(self, **kwargs) -> 'DifferenceShape':
-        """Propagate parameters to outer and inner shapes properly."""
-        new_outer = self.outer_shape.with_params(**kwargs) if hasattr(self.outer_shape, 'with_params') else self.outer_shape
-        new_inners = [s.with_params(**kwargs) if hasattr(s, 'with_params') else s for s in self.inner_shapes]
-        new_params = {**self.params, **kwargs}
-        return DifferenceShape(new_outer, new_inners, material=self.material, **new_params)

@@ -57,19 +57,17 @@ class PatternedLayer(Layer):
             thickness=thickness,
             material=background_material if isinstance(background_material, Material) else None,
             tensor_material=background_material if isinstance(background_material, TensorMaterial) else None
-    )
+        )
         
         # Override homogeneous flag since we have patterns
         self.homogenous = False
-
+        
         # Store pattern-specific attributes
         self.lattice = lattice
         self.shapes = shapes.copy() if shapes else []
         self.background_material = background_material
         self.raster_config = raster_config or RasterConfig()
         self.params = params.copy() if params else {}
-        # Track global in-plane rotation (radians) for caching and transforms
-        self.rotation_z = float(self.params.get('rotation_z', 0.0))
         
         # Validate inputs
         self._validate_inputs()
@@ -83,56 +81,6 @@ class PatternedLayer(Layer):
         for shape, material in self.shapes:
             if hasattr(shape, '_param_dependencies'):
                 self._param_dependencies.update(shape._param_dependencies)
-
-    # ---- Lattice utilities (2D) ----
-    @staticmethod
-    def _rotate_vec2(v: Tuple[float, float], angle: float) -> Tuple[float, float]:
-        c, s = float(np.cos(angle)), float(np.sin(angle))
-        x, y = v
-        return (c * x - s * y, s * x + c * y)
-
-    @staticmethod
-    def _reciprocal_from_direct(a: Tuple[float, float], b: Tuple[float, float]) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        """Compute 2D reciprocal lattice vectors (in-plane) with 2π factor.
-        Given direct lattice vectors a, b (as 2D), return g1, g2 such that A^T G = 2π I.
-        """
-        ax, ay = a
-        bx, by = b
-        det = ax * by - ay * bx
-        if abs(det) < 1e-30:
-            raise ValueError("Degenerate lattice; cannot compute reciprocal vectors")
-        # For A = [a b] with a=(ax,ay), b=(bx,by), we have A^T = [[ax, ay],[bx, by]]
-        # (A^T)^{-1} = 1/det * [[by, -ay], [-bx, ax]]
-        invT = (1.0 / det) * np.array([[by, -ay], [-bx, ax]])  # (A^T)^{-1)
-        G = 2.0 * np.pi * invT  # Include 2π
-        g1 = (float(G[0, 0]), float(G[1, 0]))
-        g2 = (float(G[0, 1]), float(G[1, 1]))
-        return g1, g2
-
-    def reciprocal_lattice(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        """Return reciprocal lattice vectors (g1, g2) including 2π factor."""
-        a, b = self.lattice
-        return self._reciprocal_from_direct(a, b)
-
-    def rotated(self, angle: float) -> 'PatternedLayer':
-        """Return a new PatternedLayer rotated in-plane by angle (radians).
-
-        This rotates the lattice vectors; shapes remain in unit-cell coordinates.
-        The physical pattern and its reciprocal lattice rotate consistently.
-        """
-        a, b = self.lattice
-        a_r = self._rotate_vec2(a, angle)
-        b_r = self._rotate_vec2(b, angle)
-        new_params = self.params.copy()
-        new_params['rotation_z'] = float(self.rotation_z + angle)
-        return PatternedLayer(
-            thickness=self.thickness,
-            lattice=(a_r, b_r),
-            shapes=self.shapes,
-            background_material=self.background_material,
-            raster_config=self.raster_config,
-            **new_params
-        )
     
     def _validate_inputs(self):
         """Validate layer construction parameters."""
@@ -190,10 +138,7 @@ class PatternedLayer(Layer):
         thickness = kwargs.get('thickness', self.thickness)
         lattice = kwargs.get('lattice', self.lattice)
         background_material = kwargs.get('background_material', self.background_material)
-        # optional rotation update: expect radians named rotation_z
-        rotation_z = kwargs.get('rotation_z', self.rotation_z)
-        new_params['rotation_z'] = float(rotation_z)
-
+        
         return PatternedLayer(
             thickness=thickness,
             lattice=lattice, 
@@ -263,8 +208,8 @@ class PatternedLayer(Layer):
         """
         if max_slices <= 1:
             return [self.thickness / 2]
-        # Uniform interior slice positions (exclude 0 and thickness)
-        return list(np.linspace(0, self.thickness, max_slices + 1)[1:-1])
+    # Uniform interior slice positions (exclude 0 and thickness)
+    return list(np.linspace(0, self.thickness, max_slices + 1)[1:-1])
     
     def rasterize_tensor_field(self, wavelength: Optional[float] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -400,7 +345,7 @@ class PatternedLayer(Layer):
         :param wavelength: Wavelength for dispersive materials
         :return: Dictionary of convolution matrices for each tensor component
         """
-    # Generate cache key
+        # Generate cache key
         cache_key = self._generate_cache_key(harmonics, wavelength)
         
         # Check cache
@@ -530,13 +475,7 @@ class PatternedLayer(Layer):
             'raster_resolution': self.raster_config.resolution,
             'background_material': str(self.background_material),
             'shapes': [shape_tuple[0].get_hash() for shape_tuple in self.shapes],
-            'params': sorted(self.params.items()) if self.params else [],
-            # 2.2 cache augmentations
-            'rotation_z': getattr(self, 'rotation_z', 0.0),
-            'reciprocal': self.reciprocal_lattice(),
-            'cache_version': '2.2',
-            'backend': self.params.get('backend', None),
-            'precision': self.params.get('precision', None),
+            'params': sorted(self.params.items()) if self.params else []
         }
         
         cache_str = json.dumps(cache_dict, sort_keys=True, default=str)

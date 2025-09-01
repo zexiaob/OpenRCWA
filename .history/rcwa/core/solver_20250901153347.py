@@ -98,12 +98,14 @@ class Solver:
         self.sweep_objects, self.sweep_vars, self.sweep_vals = self._sweeps(*sweep_args, **sweep_kw)
         n_sweeps = len(self.sweep_vals)
 
-        bar = _start_progress_bar(n_sweeps)
+    bar = _start_progress_bar(n_sweeps)
 
         for i, sweep in enumerate(self.sweep_vals):
+
             self._assign_sweep_vars(sweep)
 
             while not self.converged:
+
                 self._initialize()
                 self._inner_s_matrix()
                 self._global_s_matrix()
@@ -119,7 +121,6 @@ class Solver:
             self.iters = 0
             self.last_RTot = 1
             self.converged = False
-
             # Update with current step (1-based looks nicer but keep i for compatibility)
             try:
                 bar.update(i)
@@ -130,10 +131,7 @@ class Solver:
                 except Exception:
                     pass
 
-        try:
-            bar.finish()
-        except Exception:
-            pass
+        bar.finish()
         self.results = self._package_results()
         return self.results
 
