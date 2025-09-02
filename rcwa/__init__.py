@@ -16,7 +16,7 @@ from rcwa.core.matrices import MatrixCalculator
 from rcwa.model.material import Material, TensorMaterial, nm, um, mm, deg
 from rcwa.model.layer import (
     LayerStack, Layer, HalfSpace, Air, Vacuum, Stack, freeSpaceLayer,
-    Substrate, Silicon, SiO2, Glass
+    Substrate, Silicon, SiO2, Glass,
 )
 from rcwa.model.transforms import rotate_layer
 
@@ -40,11 +40,18 @@ from rcwa.legacy.grating import RectangularGrating, TriangularGrating, Grating
 
 # Results and workflow modules
 from rcwa.solve.source import Source, zeroSource
-from rcwa.solve.results import Results, Result, ResultGrid, build_result_grid_from_sweep
+from rcwa.solve.results import (
+    Results,
+    Result,
+    ResultGrid,
+    build_result_grid_from_sweep,
+)
 from rcwa.solve import Sweep, LCP, RCP
+from rcwa.solve.simulate import simulate
 from rcwa.solve import compute_circular_dichroism as compute_cd
 from rcwa.slicer import Slicer
 from rcwa.shorthand import complexArray
+from rcwa.viz import show_stack3d
 
 # Import utils modules that may have circular dependencies later
 try:
@@ -57,3 +64,76 @@ except ImportError:
     Plotter = None
     rTE = None
     rTM = None
+
+# Public API surface for facade exports (Stage 4.1)
+__all__ = [
+    # meta
+    "__version__",
+    "__author__",
+    "__email__",
+    "nk_dir",
+    "test_dir",
+    "example_dir",
+    # core
+    "Solver",
+    "MatrixCalculator",
+    # model
+    "Material",
+    "TensorMaterial",
+    "nm",
+    "um",
+    "mm",
+    "deg",
+    "Layer",
+    "LayerStack",
+    "HalfSpace",
+    "Air",
+    "Vacuum",
+    "Stack",
+    "freeSpaceLayer",
+    "Substrate",
+    "Silicon",
+    "SiO2",
+    "Glass",
+    "rotate_layer",
+    # geometry (optional)
+    "PatternedLayer",
+    "rectangular_lattice",
+    "square_lattice",
+    "hexagonal_lattice",
+    "Rectangle",
+    "Circle",
+    "Ellipse",
+    "Polygon",
+    "RegularPolygon",
+    "UnionShape",
+    "IntersectionShape",
+    "DifferenceShape",
+    "TaperedPolygon",
+    # legacy
+    "Crystal",
+    "RectangularGrating",
+    "TriangularGrating",
+    "Grating",
+    # workflow / results
+    "Source",
+    "zeroSource",
+    "Results",
+    "Result",
+    "ResultGrid",
+    "build_result_grid_from_sweep",
+    "Sweep",
+    "LCP",
+    "RCP",
+    "simulate",
+    "compute_cd",
+    # visualization
+    "show_stack3d",
+    # utils
+    "Slicer",
+    "complexArray",
+    "utils",
+    "Plotter",
+    "rTE",
+    "rTM",
+]

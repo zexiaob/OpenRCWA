@@ -7,3 +7,4 @@ from .results import (
 	compute_circular_dichroism,
 )
 from .source import LCP, RCP
+from .simulate import simulate

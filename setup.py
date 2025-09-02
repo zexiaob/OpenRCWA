@@ -95,6 +95,11 @@ setuptools.setup(
 		"progressbar2",
 		"autograd",
 	],
+	entry_points={
+		"console_scripts": [
+			"orcwa=rcwa.cli:main",
+		]
+	},
 	extras_require={
 		"dev": [
 			"pytest>=6.2.2",

@@ -63,6 +63,35 @@ class Result:
         rc, tc = self.r_complex(), self.t_complex()
         return np.abs(rc) ** 2, np.abs(tc) ** 2
 
+    @property
+    def RTot(self) -> float:
+        """Total reflectance."""
+        try:
+            return float(np.sum(self.R))  # type: ignore[arg-type]
+        except Exception:
+            return float(self.R)  # type: ignore[return-value]
+
+    @property
+    def TTot(self) -> float:
+        """Total transmittance."""
+        try:
+            return float(np.sum(self.T))  # type: ignore[arg-type]
+        except Exception:
+            return float(self.T)  # type: ignore[return-value]
+
+    @property
+    def conservation(self) -> float:
+        """Energy conservation R+T."""
+        return self.RTot + self.TTot
+
+    @property
+    def A(self) -> Union[float, np.ndarray]:
+        """Absorption (1 - R - T)."""
+        try:
+            return 1.0 - np.asarray(self.R) - np.asarray(self.T)
+        except Exception:
+            return 1.0 - self.R - self.T  # type: ignore[operator]
+
 
 class ResultGrid:
     """
