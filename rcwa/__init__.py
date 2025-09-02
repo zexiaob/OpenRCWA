@@ -40,7 +40,9 @@ from rcwa.legacy.grating import RectangularGrating, TriangularGrating, Grating
 
 # Results and workflow modules
 from rcwa.solve.source import Source, zeroSource
-from rcwa.solve.results import Results
+from rcwa.solve.results import Results, Result, ResultGrid, build_result_grid_from_sweep
+from rcwa.solve import Sweep, LCP, RCP
+from rcwa.solve import compute_circular_dichroism as compute_cd
 from rcwa.slicer import Slicer
 from rcwa.shorthand import complexArray
 

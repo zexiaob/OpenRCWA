@@ -1,3 +1,17 @@
+# Build artifacts and caches (added by cleanup)
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+__pycache__/
+.history/
+.DS_Store
+
+# Sphinx generated site files (keep docs/source)
+docs/*.html
+docs/searchindex.js
+docs/objects.inv
+docs/doctrees/
 # ignore all vim-generated swap files
 *.swp
 

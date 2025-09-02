@@ -119,3 +119,15 @@ class Source:
         self._k_incident = k_vector(self, self.layer, normalize=True)
 
 zeroSource = Source(float("inf"))
+
+
+# Polarization helpers (IEEE/optics convention):
+# Incident along +z; LCP = [1, i]/sqrt(2), RCP = [1, -i]/sqrt(2)
+def LCP():
+    import numpy as _np
+    return _np.array([1.0, 1.0j]) / _np.sqrt(2.0)
+
+
+def RCP():
+    import numpy as _np
+    return _np.array([1.0, -1.0j]) / _np.sqrt(2.0)

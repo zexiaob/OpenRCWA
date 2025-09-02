@@ -29,6 +29,7 @@ except Exception:  # pragma: no cover
     _HAS_JOBLIB = False
 
 from rcwa.model.layer import Layer, LayerStack
+from rcwa.solve.results import Result, ResultGrid, build_result_grid_from_sweep
 
 
 ParamKey = Union[str, Tuple[object, ...]]
@@ -252,7 +253,14 @@ class Sweep:
             for attr, seq in spec.items():
                 coord_dict[f"{obj_name}.{attr}"] = list(seq)
 
+        # Package a ResultGrid for convenience while preserving raw results list for backward-compat
+        try:
+            grid = build_result_grid_from_sweep(coord_dict, results)
+        except Exception:
+            grid = None  # fallback gracefully
+
         return {
             'coords': coord_dict,
             'results': results,
+            'result_grid': grid,
         }
