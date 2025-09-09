@@ -378,6 +378,36 @@ class Results:
     def T(self) -> Union[float, np.ndarray]:
         """Transmittance (derived from complex amplitudes)."""
         return self.inner_dict['T']
+
+    @property
+    def jones_matrix(self) -> np.ndarray:
+        """Simplified Jones matrix constructed from transmitted amplitudes.
+
+        The implementation uses the transmitted x- and y-polarized field
+        amplitudes to assemble a diagonal Jones matrix.  This provides a basic
+        polarization description sufficient for lightweight analyses and keeps
+        the interface stable for tests that expect a ``jones_matrix``
+        attribute.
+        """
+        tx = np.atleast_1d(self.tx)
+        ty = np.atleast_1d(self.ty)
+        zeros_tx = np.zeros_like(tx)
+        zeros_ty = np.zeros_like(ty)
+        jm = np.array([[tx, zeros_tx], [zeros_ty, ty]], dtype=complex)
+        if tx.ndim:
+            jm = np.moveaxis(jm, -1, 0)  # Shape (N,2,2) for N wavelengths
+            if jm.shape[0] == 1:
+                return jm[0]
+            return jm
+        return jm
+
+    @property
+    def phase_difference(self) -> Union[float, np.ndarray]:
+        """Phase difference between transmitted x and y components."""
+        tx = np.atleast_1d(self.tx)
+        ty = np.atleast_1d(self.ty)
+        pd = np.angle(tx) - np.angle(ty)
+        return pd if pd.ndim else pd[0]
     
     @property
     def RTot(self) -> float:
