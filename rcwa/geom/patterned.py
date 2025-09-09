@@ -368,23 +368,64 @@ class PatternedLayer(Layer):
     def _get_material_tensors(self, material: Union[Material, TensorMaterial],
                             wavelength: Optional[float]) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Extract epsilon and mu tensors from material.
+        Extract epsilon and mu tensors from material for a single wavelength.
         
         :param material: Material object
-        :param wavelength: Wavelength in meters
+        :param wavelength: Wavelength in meters (scalar)
         :return: Tuple of (epsilon_tensor, mu_tensor), each 3x3 complex arrays
         """
         if isinstance(material, TensorMaterial):
-            # Extract full tensors from TensorMaterial
-            epsilon_tensor = material.epsilon_tensor  # Property, not method
-            mu_tensor = material.mu_tensor  # Property, not method
-        else:
-            # Convert scalar Material to diagonal tensors
-            er = material.er(wavelength) if callable(material.er) else material.er
-            ur = material.ur(wavelength) if callable(material.ur) else material.ur
+            # Temporarily set the source to get the tensor at this specific wavelength
+            original_source = material.source
+            if wavelength is not None:
+                from rcwa.solve.source import Source
+                # Create a temporary source for this single wavelength
+                temp_source = Source(wavelength=wavelength * 1e9) # convert back to nm
+                material.source = temp_source
+
+            epsilon_tensor = material.epsilon_tensor
+            mu_tensor = material.mu_tensor
             
-            epsilon_tensor = np.eye(3, dtype=complex) * er
-            mu_tensor = np.eye(3, dtype=complex) * ur
+            # Restore original source
+            material.source = original_source
+
+        else: # Isotropic Material
+            # Get the original scalar values, not potentially modified matrix values
+            if hasattr(material, '_er_original'):
+                er = material._er_original
+            elif callable(material.er):
+                er = material.er(wavelength)
+            else:
+                # Check if er has been converted to a matrix, if so get the scalar value
+                if isinstance(material.er, np.ndarray) and material.er.shape == (49, 49):
+                    # This material's er has been corrupted by Layer.set_convolution_matrices
+                    # Try to recover the original scalar value
+                    # For a uniform material, all diagonal elements should be the same
+                    er = material.er[0, 0]
+                else:
+                    er = material.er
+            
+            if hasattr(material, '_ur_original'):
+                ur = material._ur_original
+            elif callable(material.ur):
+                ur = material.ur(wavelength)
+            else:
+                # Check if ur has been converted to a matrix, if so get the scalar value
+                if isinstance(material.ur, np.ndarray) and material.ur.shape == (49, 49):
+                    # This material's ur has been corrupted by Layer.set_convolution_matrices
+                    ur = material.ur[0, 0]
+                else:
+                    ur = material.ur
+            
+            # 支持 er/ur 为 3x3 矩阵或标量
+            if isinstance(er, np.ndarray) and er.shape == (3, 3):
+                epsilon_tensor = er
+            else:
+                epsilon_tensor = np.eye(3, dtype=complex) * er
+            if isinstance(ur, np.ndarray) and ur.shape == (3, 3):
+                mu_tensor = ur
+            else:
+                mu_tensor = np.eye(3, dtype=complex) * ur
         
         return epsilon_tensor, mu_tensor
 
@@ -582,6 +623,58 @@ class PatternedLayer(Layer):
         
         return (x_min, x_max, y_min, y_max)
     
+    def set_convolution_matrices(self, n_harmonics: Union[Tuple[int, int], int]):
+        """
+        Overrides the base Layer method to generate convolution matrices for the pattern.
+        This method is called by the solver during the simulation setup.
+        """
+        # Ensure n_harmonics is a tuple (Nh_x, Nh_y)
+        if isinstance(n_harmonics, int):
+            harmonics_tuple = (n_harmonics, n_harmonics)
+        elif isinstance(n_harmonics, (list, tuple)) and len(n_harmonics) == 2:
+            harmonics_tuple = tuple(n_harmonics)
+        else:
+            raise ValueError(f"Unsupported n_harmonics format: {n_harmonics}")
+
+        # The wavelength is needed for dispersive materials.
+        # We get it from the source object, which should have been set by the solver.
+        if not hasattr(self, 'source') or self.source is None:
+            # Try to get it from the background material as a fallback
+            if hasattr(self.background_material, 'source') and self.background_material.source is not None:
+                self.source = self.background_material.source
+            else:
+                # If still not found, we cannot proceed.
+                raise RuntimeError("PatternedLayer requires a source to be set before calculating convolution matrices, "
+                                 "but it was not found on the layer or its background material.")
+        
+        # Use a representative wavelength for the calculation. For sweeps, this might be re-evaluated.
+        # The caching mechanism within to_convolution_matrices will handle different wavelengths.
+        wavelength_nm = self.source.wavelength
+        if isinstance(wavelength_nm, (np.ndarray, list, tuple)):
+            # Use the central wavelength for single-point calculation if sweeping
+            wavelength_nm = wavelength_nm[len(wavelength_nm) // 2]
+
+        wavelength_m = float(wavelength_nm) * 1e-9 # Convert nm to meters
+
+        # Generate the full set of convolution matrices
+        conv_matrices = self.to_convolution_matrices(harmonics=harmonics_tuple, wavelength=wavelength_m)
+
+        # Store the full set of tensor convolution matrices for the solver
+        self._tensor_conv_matrices = conv_matrices
+
+        # For compatibility with parts of the solver that might expect scalar er/ur matrices,
+        # we can assign the zz components as was done in the base Layer for uniform tensors.
+        if 'er_zz' in conv_matrices:
+            self.er = conv_matrices['er_zz']
+        if 'ur_zz' in conv_matrices:
+            self.ur = conv_matrices['ur_zz']
+
+        # Also assign the legacy properties if they exist
+        if hasattr(self, '_tensor_er'):
+            self._tensor_er = self.er
+        if hasattr(self, '_tensor_ur'):
+            self._tensor_ur = self.ur
+
     def convolution_matrix(self, harmonics_x: np.ndarray, harmonics_y: np.ndarray,
                           tensor_component: str = 'xx') -> np.ndarray:
         """

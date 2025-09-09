@@ -128,7 +128,35 @@ class Layer(MatrixCalculator):
             self.material.source = source
 
     def set_convolution_matrices(self, n_harmonics: Union[ArrayLike, int]):
+        # If this instance is a PatternedLayer, its own more specific logic
+        # will handle convolution matrix generation. We return early to prevent
+        # this base method from incorrectly modifying its properties.
+        if 'PatternedLayer' in type(self).__name__:
+            return
+
+        # This method is overridden by PatternedLayer. If this is a PatternedLayer instance,
+        # its own method should be called. The LayerStack iterates through layers and calls this.
+        # The check below is to handle the case where a PatternedLayer might be incorrectly
+        # passed as a `crystal` object to a generic `Layer`.
+
         if self.crystal is not None:
+            # This path is for legacy Crystal objects, not modern PatternedLayer objects.
+            if not hasattr(self.crystal, 'permittivityCellData'):
+                # If a PatternedLayer is passed as a `crystal`, it will fail here.
+                # This is the source of the user's error.
+                # A PatternedLayer *is* a Layer, and should be used directly.
+                # The previous fix attempted to add the override, but the call stack shows
+                # the base Layer.set_convolution_matrices is still being entered.
+                # This indicates the object is a `Layer` with `crystal=PatternedLayer(...)`,
+                # not a `PatternedLayer` instance itself in the stack.
+                # The correct usage is `layers=[PatternedLayer(...)]`.
+                # The error message should guide the user.
+                raise TypeError(
+                    f"The object provided as 'crystal' (type: {type(self.crystal).__name__}) is not a valid Crystal "
+                    "because it lacks the 'permittivityCellData' attribute. If you are using a "
+                    "PatternedLayer, it should be placed directly in the LayerStack's 'layers' list, "
+                    "not assigned to a generic Layer's 'crystal' parameter.")
+            
             self.er = self._convolution_matrix(self.crystal.permittivityCellData, n_harmonics)
             self.ur = self._convolution_matrix(self.crystal.permeabilityCellData, n_harmonics)
         elif self.is_anisotropic:

@@ -13,7 +13,7 @@ from rcwa.core.solver import Solver
 from rcwa.core.matrices import MatrixCalculator
 
 # Model modules (new architecture)
-from rcwa.model.material import Material, TensorMaterial, nm, um, mm, deg
+from rcwa.model.material import Material, TensorMaterial, nm, um, mm, deg, make_n_from_table, make_epsilon_tensor_from_table
 from rcwa.model.layer import (
     LayerStack, Layer, HalfSpace, Air, Vacuum, Stack, freeSpaceLayer,
     Substrate, Silicon, SiO2, Glass,
@@ -84,6 +84,8 @@ __all__ = [
     "um",
     "mm",
     "deg",
+    "make_n_from_table",
+    "make_epsilon_tensor_from_table",
     "Layer",
     "LayerStack",
     "HalfSpace",

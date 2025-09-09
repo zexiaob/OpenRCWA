@@ -28,7 +28,14 @@ The `Material` class handles materials whose material properties (permittivity, 
 
 Interpolation and Extrapolation
 -------------------------------------
-If using tabulated data, you may use any wavelength between the minimum and maximum values in the table, and the permittivity will be linearly interpolated if the desired wavelength falls between two tabulated points. If the desired wavelength falls outside the minimum or maximum, :code:`rcwa` will attempt to extrapolate using the slope near the boundary and give a warning.
+There are two tabulated-data paths with slightly different policies:
+
+- Database/CSV files (filename or database name): linear interpolation is performed automatically for requests inside the tabulated range; linear extrapolation outside the range is allowed and emits a warning.
+- User-supplied inline tables (Material(data=...) or TensorMaterial with a dict): interpolation/extrapolation are strictly disabled by default. You must explicitly opt-in via allow_interpolation=True and/or allow_extrapolation=True. Otherwise a ValueError is raised when an off-grid wavelength is requested.
+
+Notes:
+- For scalar inline tables in :code:`Material`, you can pass either 'n' or 'er' (optionally 'ur') with a 'wavelength' array.
+- For anisotropic inline tables in :code:`TensorMaterial`, you can provide epsilon_* or n_* component arrays (xx, xy, xz, yx, yy, yz, zx, zy, zz) or full [N,3,3] arrays under 'epsilon_tensor' or 'n_tensor'. When 'n' data are provided, interpolation is performed on n first and then squared to epsilon.
 
 Imaginary Sign Convention
 ----------------------------------------------------------------------
@@ -80,4 +87,53 @@ Material Examples
 
     # Use a custom file
     custom_material = Material(filename='custom_filename.csv')
+
+    # User-supplied inline table with strict interpolation/extrapolation flags
+    iso_data = {
+        'wavelength': np.array([1.50, 1.55, 1.60]),
+        'n': np.array([1.45+0j, 1.46+0j, 1.47+0j]),
+    }
+    # No interpolation/extrapolation unless explicitly allowed
+    mat_tab = Material(data=iso_data, allow_interpolation=True, allow_extrapolation=False)
+
+
+Anisotropic Materials (TensorMaterial)
+--------------------------------------
+
+.. autoclass:: rcwa.model.material.TensorMaterial
+    :members:
+
+Tabulated anisotropic data examples:
+
+.. code-block:: python
+
+    import numpy as np
+    from rcwa.model.material import TensorMaterial
+
+    # Provide n_* components; non-specified off-diagonals default to 0 (identity for missing diagonals)
+    ani_table = {
+        'wavelength': np.array([1.50, 1.55, 1.60]),
+        'n_xx': np.array([1.50, 1.51, 1.52]),
+        'n_yy': np.array([1.48, 1.49, 1.50]),
+        'n_zz': np.array([1.60, 1.60, 1.60]),
+    }
+    ani_tab = TensorMaterial(
+        epsilon_tensor=ani_table,               # pass the dict here
+        allow_interpolation=True,               # explicit opt-in
+        allow_extrapolation=False,
+        name='ani_tabulated'
+    )
+    # When using n_* data, interpolation is performed on n first, then epsilon = n**2
+
+    # Alternatively, full arrays per wavelength
+    eps_wl = np.stack([
+        np.diag([2.25, 2.21, 2.56]),
+        np.diag([2.27, 2.22, 2.56]),
+        np.diag([2.30, 2.23, 2.56]),
+    ], axis=0)
+    ani_table_eps = {
+        'wavelength': np.array([1.50, 1.55, 1.60]),
+        'epsilon_tensor': eps_wl,
+    }
+    ani_tab_eps = TensorMaterial(epsilon_tensor=ani_table_eps, allow_interpolation=True)
 

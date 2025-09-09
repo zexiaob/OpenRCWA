@@ -53,7 +53,10 @@ class Material:
         'SiO2': 'main/SiO2/Radhakrishnan-o.yml',
     }})()
 
-    def __init__(self, name=None, er=1, ur=1, n=None, database_path=None, filename=None, source=None):
+    def __init__(self, name=None, er=1, ur=1, n=None, database_path=None, filename=None, source=None,
+                 data: Union[None, dict] = None,
+                 allow_interpolation: bool = False,
+                 allow_extrapolation: bool = False):
         self.name = ''
         self.source = source
         self.dispersive = False
@@ -93,6 +96,16 @@ class Material:
         elif filename is not None:
             self.dispersive = True
             self._load_from_nk_table(filename=filename)
+        elif data is not None:
+            # User-supplied inline table
+            self.dispersive = True
+            self.dispersion_type = 'tabulated'
+            self._set_from_inline_table(data)
+            # Apply strict lookup policy only to inline tables
+            self._lookup_policy = {
+                'allow_interpolation': bool(allow_interpolation),
+                'allow_extrapolation': bool(allow_extrapolation),
+            }
 
         # Constant materials (non-dispersive)
         if not self.dispersive:
@@ -142,6 +155,41 @@ class Material:
             raise ValueError("Material not found in database")
 
         self._set_dispersive_nk(data_dict)
+
+    def _set_from_inline_table(self, table: dict):
+        """Initialize from in-memory table with keys: 'wavelength' and 'n' or 'er' (optional 'ur')."""
+        if 'wavelength' not in table:
+            raise ValueError("'data' must include 'wavelength'")
+        wl = np.array(table['wavelength'], dtype=float)
+        if wl.ndim != 1 or wl.size < 2:
+            raise ValueError("'wavelength' must be 1D with at least 2 points")
+        order = np.argsort(wl)
+        wl = wl[order]
+
+        if 'n' in table:
+            n_arr = np.array(table['n'], dtype=complex)
+            if n_arr.shape[0] != wl.shape[0]:
+                raise ValueError("Length of 'n' must match 'wavelength'")
+            n_arr = n_arr[order]
+            er_arr = np.square(n_arr)
+            ur_arr = np.ones_like(er_arr)
+        elif 'er' in table:
+            er_arr = np.array(table['er'], dtype=complex)
+            if er_arr.shape[0] != wl.shape[0]:
+                raise ValueError("Length of 'er' must match 'wavelength'")
+            er_arr = er_arr[order]
+            if 'ur' in table:
+                ur_arr = np.array(table['ur'], dtype=complex)
+                if ur_arr.shape[0] != wl.shape[0]:
+                    raise ValueError("Length of 'ur' must match 'wavelength'")
+                ur_arr = ur_arr[order]
+            else:
+                ur_arr = np.ones_like(er_arr)
+            n_arr = np.sqrt(er_arr * ur_arr)
+        else:
+            raise ValueError("'data' must include either 'n' or 'er'")
+
+        self._set_dispersive_nk({'wavelength': wl, 'n': n_arr, 'er': er_arr, 'ur': ur_arr, 'dispersion_type': 'tabulated'})
 
     @property
     def n(self):
@@ -194,13 +242,20 @@ class Material:
         indexOfWavelength = np.searchsorted(self.wavelengths, wavelength)
         return_value = 0
 
+        # Determine policy: only active for inline user tables
+        policy = getattr(self, '_lookup_policy', None)
+
         if wavelength > self.wavelengths[-1]: # Extrapolate if necessary
+            if policy is not None and not policy.get('allow_extrapolation', False):
+                raise ValueError("Extrapolation disabled. Set allow_extrapolation=True to enable.")
             slope = (parameter[-1] - parameter[-2]) / (self.wavelengths[-1] - self.wavelengths[-2])
             deltaWavelength = wavelength - self.wavelengths[-1]
             return_value = parameter[-1] + slope * deltaWavelength
             warnings.warn(f'Requested wavelength {wavelength} outside available material range {self.wavelengths[0]} - {self.wavelengths[-1]}')
 
         elif wavelength < self.wavelengths[0]: # Extrapolate the other direction if necessary
+            if policy is not None and not policy.get('allow_extrapolation', False):
+                raise ValueError("Extrapolation disabled. Set allow_extrapolation=True to enable.")
             slope = (parameter[1] - parameter[0]) / (self.wavelengths[1] - self.wavelengths[0])
             deltaWavelength = self.wavelengths[0] - wavelength
             return_value = parameter[0] - slope * deltaWavelength
@@ -210,6 +265,8 @@ class Material:
             if wavelength == self.wavelengths[indexOfWavelength]: # We found the EXACT wavelength
                 return_value = parameter[indexOfWavelength]
             else: # We need to interpolate the wavelength. The indexOfWavelength is pointing to the *next* value
+                if policy is not None and not policy.get('allow_interpolation', False):
+                    raise ValueError("Interpolation disabled. Set allow_interpolation=True to enable.")
                 slope = (parameter[indexOfWavelength] - parameter[indexOfWavelength-1]) / (self.wavelengths[indexOfWavelength] - self.wavelengths[indexOfWavelength-1]) # wavelength spacing between two points
                 deltaWavelength = wavelength - self.wavelengths[indexOfWavelength]
                 return_value = parameter[indexOfWavelength] + slope * deltaWavelength
@@ -237,7 +294,9 @@ class TensorMaterial:
     """
     
     def __init__(self, epsilon_tensor=None, mu_tensor=None, source=None, name="anisotropic",
-                 wavelength_range=None, thickness_range=(1e-12, 1e-3), n_tensor=None):
+                 wavelength_range=None, thickness_range=(1e-12, 1e-3), n_tensor=None,
+                 allow_interpolation: bool = False,
+                 allow_extrapolation: bool = False):
         """
         Initialize TensorMaterial with enhanced validation.
         
@@ -283,9 +342,13 @@ class TensorMaterial:
             self.dispersive = True
             self._epsilon_dispersive = epsilon_tensor
         elif isinstance(epsilon_tensor, dict):
-            # Tabulated data
+            # Tabulated data (epsilon_* or n_*)
             self.dispersive = True
             self._load_tensor_from_table(epsilon_tensor)
+            self._tensor_lookup_policy = {
+                'allow_interpolation': bool(allow_interpolation),
+                'allow_extrapolation': bool(allow_extrapolation),
+            }
         else:
             # Constant tensor
             self._epsilon_tensor = np.array(epsilon_tensor, dtype=complex)
@@ -352,31 +415,52 @@ class TensorMaterial:
                 raise ValueError("Mu tensor must be 3x3")
     
     def _load_tensor_from_table(self, tensor_data: dict):
-        """Load epsilon tensor from tabulated data"""
+        """Load epsilon tensor from tabulated data or refractive index tensor data."""
         if 'wavelength' not in tensor_data:
             raise ValueError("Tensor data must contain 'wavelength' key")
-        
-        self.wavelengths = np.array(tensor_data['wavelength'])
-        
-        # Handle different tensor storage formats
-        if 'epsilon_xx' in tensor_data:
-            # Component-wise storage
-            self._epsilon_tensor_table = np.zeros((len(self.wavelengths), 3, 3), dtype=complex)
-            components = ['xx', 'xy', 'xz', 'yx', 'yy', 'yz', 'zx', 'zy', 'zz']
-            for i, comp in enumerate(components):
-                row, col = i // 3, i % 3
-                key = f'epsilon_{comp}'
-                if key in tensor_data:
-                    self._epsilon_tensor_table[:, row, col] = tensor_data[key]
+        wl = np.array(tensor_data['wavelength'], dtype=float)
+        order = np.argsort(wl)
+        self.wavelengths = wl[order]
+
+        def build_table(prefix: str) -> np.ndarray:
+            table = np.zeros((len(self.wavelengths), 3, 3), dtype=complex)
+            comps = ['xx','xy','xz','yx','yy','yz','zx','zy','zz']
+            found = False
+            for i, comp in enumerate(comps):
+                r, c = i // 3, i % 3
+                k = f'{prefix}_{comp}'
+                if k in tensor_data:
+                    arr = np.array(tensor_data[k], dtype=complex)
+                    if arr.shape[0] != wl.shape[0]:
+                        raise ValueError(f"'{k}' length must match 'wavelength'")
+                    table[:, r, c] = arr[order]
+                    found = True
                 else:
-                    # Default to zero for off-diagonal, identity for diagonal
-                    if row == col:
-                        self._epsilon_tensor_table[:, row, col] = 1.0
-        elif 'epsilon_tensor' in tensor_data:
-            # Full tensor storage
-            self._epsilon_tensor_table = np.array(tensor_data['epsilon_tensor'])
+                    if r == c:
+                        table[:, r, c] = 1.0
+            if not found:
+                raise ValueError(f"No '{prefix}_*' components found")
+            return table
+
+        if 'epsilon_tensor' in tensor_data or 'n_tensor' in tensor_data:
+            # Full tensor arrays provided across wavelengths
+            key = 'epsilon_tensor' if 'epsilon_tensor' in tensor_data else 'n_tensor'
+            arr = np.array(tensor_data[key])
+            if arr.ndim != 3 or arr.shape[1:] != (3,3) or arr.shape[0] != wl.shape[0]:
+                raise ValueError(f"'{key}' must have shape [N,3,3]")
+            arr = arr[order]
+            if key == 'n_tensor':
+                # Keep n-table and derive epsilon on lookup (interpolate n first, then square)
+                self._n_tensor_table = arr.astype(complex)
+            else:
+                self._epsilon_tensor_table = arr.astype(complex)
+        elif any(k.startswith('epsilon_') for k in tensor_data.keys()):
+            self._epsilon_tensor_table = build_table('epsilon')
+        elif any(k.startswith('n_') for k in tensor_data.keys()):
+            # Keep n-table and derive epsilon on lookup (interpolate n first, then square)
+            self._n_tensor_table = build_table('n')
         else:
-            raise ValueError("Tensor data must contain either component data or 'epsilon_tensor'")
+            raise ValueError("Tensor data must contain epsilon_* or n_* components, or epsilon_tensor/n_tensor array")
     
     def _load_mu_tensor_from_table(self, tensor_data: dict):
         """Load mu tensor from tabulated data (similar to epsilon)"""
@@ -389,12 +473,10 @@ class TensorMaterial:
         if not self.dispersive:
             return self._epsilon_tensor
         else:
-            if hasattr(self, '_epsilon_dispersive'):
-                # Function-based
-                return self._epsilon_dispersive(self.source.wavelength)
-            else:
-                # Table-based
-                return self._lookup_tensor(self._epsilon_tensor_table)
+            # Unified path: evaluate at current source wavelength
+            if self.source is None:
+                raise ValueError("Source must be set for dispersive materials")
+            return self._tensor_at_wavelength(self.source.wavelength)
     
     @property
     def mu_tensor(self) -> np.ndarray:
@@ -421,25 +503,64 @@ class TensorMaterial:
             return np.sqrt(self.epsilon_tensor)
     
     def _lookup_tensor(self, tensor_table: np.ndarray) -> np.ndarray:
-        """Look up tensor value at current wavelength using interpolation"""
+        """Look up tensor value at current wavelength using interpolation.
+        If n-tables are present, interpolate n first and square to epsilon.
+        """
         if self.source is None:
             raise ValueError("Source must be set for dispersive materials")
-        
-        wavelength = self.source.wavelength
-        
-        # Find the interpolation indices
-        idx = np.searchsorted(self.wavelengths, wavelength)
-        
-        if wavelength <= self.wavelengths[0]:
-            return tensor_table[0]
-        elif wavelength >= self.wavelengths[-1]:
-            return tensor_table[-1]
-        else:
-            # Linear interpolation
+        return self._tensor_at_wavelength(self.source.wavelength)
+
+    def _tensor_at_wavelength(self, wavelength: float) -> np.ndarray:
+        """Evaluate epsilon tensor at an explicit wavelength.
+
+        Prefers n-table interpolation when available, then squares to epsilon.
+        Respects allow_interpolation/allow_extrapolation policy.
+        """
+        policy = getattr(self, '_tensor_lookup_policy', None)
+
+        def interpolate_table(table: np.ndarray) -> np.ndarray:
+            idx = np.searchsorted(self.wavelengths, wavelength)
+            # Left of range
+            if wavelength < self.wavelengths[0]:
+                if policy is not None and not policy.get('allow_extrapolation', False):
+                    raise ValueError("Tensor extrapolation disabled. Set allow_extrapolation=True to enable.")
+                w1, w2 = self.wavelengths[0], self.wavelengths[1]
+                t1, t2 = table[0], table[1]
+                alpha = (wavelength - w1) / (w2 - w1)
+                return t1 + alpha * (t2 - t1)
+            # Right of range
+            if wavelength > self.wavelengths[-1]:
+                if policy is not None and not policy.get('allow_extrapolation', False):
+                    raise ValueError("Tensor extrapolation disabled. Set allow_extrapolation=True to enable.")
+                w1, w2 = self.wavelengths[-2], self.wavelengths[-1]
+                t1, t2 = table[-2], table[-1]
+                alpha = (wavelength - w2) / (w2 - w1) + 1.0
+                return t1 + alpha * (t2 - t1)
+            # Exactly at first point
+            if wavelength == self.wavelengths[0]:
+                return table[0]
+            # Exactly at some grid point (not first)
+            if idx < len(self.wavelengths) and wavelength == self.wavelengths[idx]:
+                return table[idx]
+            # Interior interpolation
+            if policy is not None and not policy.get('allow_interpolation', False):
+                raise ValueError("Tensor interpolation disabled. Set allow_interpolation=True to enable.")
             w1, w2 = self.wavelengths[idx-1], self.wavelengths[idx]
-            t1, t2 = tensor_table[idx-1], tensor_table[idx]
+            t1, t2 = table[idx-1], table[idx]
             alpha = (wavelength - w1) / (w2 - w1)
             return t1 + alpha * (t2 - t1)
+
+        # Prefer n-table if available for physical interpolation
+        if hasattr(self, '_n_tensor_table'):
+            n_interp = interpolate_table(self._n_tensor_table)
+            return n_interp * n_interp
+        elif hasattr(self, '_epsilon_tensor_table'):
+            return interpolate_table(self._epsilon_tensor_table)
+        elif hasattr(self, '_epsilon_dispersive'):
+            return self._epsilon_dispersive(wavelength)
+        else:
+            # Fallback for constant tensors
+            return getattr(self, '_epsilon_tensor', np.eye(3, dtype=complex))
     
     @classmethod
     def from_diagonal(cls, eps_xx: Union[complex, Callable], 
@@ -482,15 +603,11 @@ class TensorMaterial:
             return TensorMaterial(epsilon_tensor=new_eps, mu_tensor=new_mu, 
                                 name=f"{self.name}_rotated", source=self.source)
         else:
-            # Dispersive case: wrap the function
-            if hasattr(self, '_epsilon_dispersive'):
-                def rotated_eps_func(wl):
-                    eps = self._epsilon_dispersive(wl)
-                    return rotation_matrix @ eps @ rotation_matrix.T
-                epsilon_tensor = rotated_eps_func
-            else:
-                # Table-based rotation would be more complex
-                raise NotImplementedError("Rotation of tabulated tensor materials not yet implemented")
+            # Dispersive case: support both function- and table-based by wrapping evaluation
+            def rotated_eps_func(wl):
+                eps = self._tensor_at_wavelength(wl)
+                return rotation_matrix @ eps @ rotation_matrix.T
+            epsilon_tensor = rotated_eps_func
             
             if hasattr(self, '_mu_dispersive'):
                 def rotated_mu_func(wl):
@@ -502,3 +619,155 @@ class TensorMaterial:
             
             return TensorMaterial(epsilon_tensor=epsilon_tensor, mu_tensor=mu_tensor,
                                 name=f"{self.name}_rotated", source=self.source)
+
+
+# --- Public helpers: build dispersion functions from tabulated data ---
+
+def make_n_from_table(
+    table: dict,
+    allow_interpolation: bool = False,
+    allow_extrapolation: bool = False,
+):
+    """Create a scalar refractive-index dispersion function n(wl) from a table.
+
+    Table forms:
+      - {'wavelength': [...], 'n': [...]} or
+      - {'wavelength': [...], 'er': [...]} optionally with 'ur'
+    Flags strictly control interpolation/extrapolation.
+    """
+    if 'wavelength' not in table:
+        raise ValueError("'table' must include 'wavelength'")
+    wl = np.array(table['wavelength'], dtype=float)
+    order = np.argsort(wl)
+    wl = wl[order]
+    if 'n' in table:
+        vals = np.array(table['n'], dtype=complex)[order]
+        use_n = True
+    elif 'er' in table:
+        er = np.array(table['er'], dtype=complex)[order]
+        if 'ur' in table:
+            ur = np.array(table['ur'], dtype=complex)[order]
+        else:
+            ur = np.ones_like(er)
+        vals = np.sqrt(er * ur)
+        use_n = False
+    else:
+        raise ValueError("table must include 'n' or 'er'")
+
+    def interp(x: float) -> complex:
+        idx = np.searchsorted(wl, x)
+        if x < wl[0]:
+            if not allow_extrapolation:
+                raise ValueError("Extrapolation disabled. Set allow_extrapolation=True to enable.")
+            slope = (vals[1] - vals[0]) / (wl[1] - wl[0])
+            return vals[0] + slope * (x - wl[0])
+        if x > wl[-1]:
+            if not allow_extrapolation:
+                raise ValueError("Extrapolation disabled. Set allow_extrapolation=True to enable.")
+            slope = (vals[-1] - vals[-2]) / (wl[-1] - wl[-2])
+            return vals[-1] + slope * (x - wl[-1])
+        if x == wl[0]:
+            return vals[0]
+        if idx < len(wl) and x == wl[idx]:
+            return vals[idx]
+        if not allow_interpolation:
+            raise ValueError("Interpolation disabled. Set allow_interpolation=True to enable.")
+        x1, x2 = wl[idx-1], wl[idx]
+        v1, v2 = vals[idx-1], vals[idx]
+        a = (x - x1) / (x2 - x1)
+        return v1 + a * (v2 - v1)
+
+    return interp
+
+
+def make_epsilon_tensor_from_table(
+    tensor_data: dict,
+    allow_interpolation: bool = False,
+    allow_extrapolation: bool = False,
+):
+    """Create an epsilon-tensor dispersion function eps(wl) from tensor tables.
+
+    Accepts the same forms as TensorMaterial: epsilon_* or n_* components, or
+    full arrays under 'epsilon_tensor'/'n_tensor'. When n is provided, this
+    interpolates n first and squares to epsilon.
+    """
+    if 'wavelength' not in tensor_data:
+        raise ValueError("Tensor data must contain 'wavelength'")
+    wl = np.array(tensor_data['wavelength'], dtype=float)
+    order = np.argsort(wl)
+    wl = wl[order]
+
+    def build_table(prefix: str) -> np.ndarray:
+        table = np.zeros((len(wl), 3, 3), dtype=complex)
+        comps = ['xx','xy','xz','yx','yy','yz','zx','zy','zz']
+        found = False
+        for i, comp in enumerate(comps):
+            r, c = i // 3, i % 3
+            k = f'{prefix}_{comp}'
+            if k in tensor_data:
+                arr = np.array(tensor_data[k], dtype=complex)
+                if arr.shape[0] != len(wl):
+                    raise ValueError(f"'{k}' length must match 'wavelength'")
+                table[:, r, c] = arr[order]
+                found = True
+            else:
+                if r == c and prefix == 'epsilon':
+                    table[:, r, c] = 1.0
+        if not found:
+            raise ValueError(f"No '{prefix}_*' components found")
+        return table
+
+    n_tab = None
+    eps_tab = None
+    if 'epsilon_tensor' in tensor_data or 'n_tensor' in tensor_data:
+        key = 'epsilon_tensor' if 'epsilon_tensor' in tensor_data else 'n_tensor'
+        arr = np.array(tensor_data[key])
+        if arr.ndim != 3 or arr.shape[1:] != (3,3) or arr.shape[0] != len(wl):
+            raise ValueError(f"'{key}' must have shape [N,3,3]")
+        arr = arr[order].astype(complex)
+        if key == 'n_tensor':
+            n_tab = arr
+        else:
+            eps_tab = arr
+    elif any(k.startswith('n_') for k in tensor_data.keys()):
+        n_tab = build_table('n')
+    elif any(k.startswith('epsilon_') for k in tensor_data.keys()):
+        eps_tab = build_table('epsilon')
+    else:
+        raise ValueError("Tensor data must contain epsilon_* or n_* components, or epsilon_tensor/n_tensor array")
+
+    def interp_tensor(x: float) -> np.ndarray:
+        idx = np.searchsorted(wl, x)
+        def _interp_tab(tab: np.ndarray) -> np.ndarray:
+            if x < wl[0]:
+                if not allow_extrapolation:
+                    raise ValueError("Tensor extrapolation disabled. Set allow_extrapolation=True to enable.")
+                w1, w2 = wl[0], wl[1]
+                t1, t2 = tab[0], tab[1]
+                a = (x - w1) / (w2 - w1)
+                return t1 + a * (t2 - t1)
+            if x > wl[-1]:
+                if not allow_extrapolation:
+                    raise ValueError("Tensor extrapolation disabled. Set allow_extrapolation=True to enable.")
+                w1, w2 = wl[-2], wl[-1]
+                t1, t2 = tab[-2], tab[-1]
+                a = (x - w2) / (w2 - w1) + 1.0
+                return t1 + a * (t2 - t1)
+            if x == wl[0]:
+                return tab[0]
+            if idx < len(wl) and x == wl[idx]:
+                return tab[idx]
+            if not allow_interpolation:
+                raise ValueError("Tensor interpolation disabled. Set allow_interpolation=True to enable.")
+            w1, w2 = wl[idx-1], wl[idx]
+            t1, t2 = tab[idx-1], tab[idx]
+            a = (x - w1) / (w2 - w1)
+            return t1 + a * (t2 - t1)
+
+        if n_tab is not None:
+            n_interp = _interp_tab(n_tab)
+            return n_interp * n_interp
+        else:
+            return _interp_tab(eps_tab)  # type: ignore[arg-type]
+
+    return interp_tensor

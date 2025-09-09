@@ -1,5 +1,6 @@
 from rcwa.shorthand import *
 from rcwa.utils import k_vector
+from typing import Any
 # Import Layer locally to avoid circular import
 
 
@@ -17,16 +18,18 @@ class Source:
         from rcwa.model.layer import Layer  # Import locally to avoid circular import
         if layer is None:
             layer = Layer(er=1, ur=1)
-        
+
         self._free_space_wavelength = wavelength
+        self._layer = None  # will be set via property to trigger refresh
         self.layer = layer
         self.k0 = 2*pi / self._free_space_wavelength
         self._phi = phi
         self._theta = theta
-        self._set_k_incident()
 
         self._pTEM = pTEM / norm(pTEM)
 
+        # Initialize basis and projections
+        self._set_k_incident()
         self._set_tem_vectors()
         self.pX = (self.pTE*self.aTE + self.pTM*self.aTM)[0]
         self.pY = (self.pTE*self.aTE + self.pTM*self.aTM)[1]
@@ -60,6 +63,10 @@ class Source:
         self._free_space_wavelength = wavelength
         self.k0 = 2 * pi / wavelength
         self._set_k_incident()
+        # Recompute basis and projections since k changes with wavelength via k0
+        self._set_tem_vectors()
+        self.pX = (self.pTE*self.aTE + self.pTM*self.aTM)[0]
+        self.pY = (self.pTE*self.aTE + self.pTM*self.aTM)[1]
 
     def _set_tem_vectors(self):
         deviceNormalUnitVector = complexArray([0, 0, -1])
@@ -92,6 +99,10 @@ class Source:
     @pTEM.setter
     def pTEM(self, pTEM):
         self._pTEM = pTEM / np.linalg.norm(pTEM)
+        # Update projections with new polarization
+        self._set_tem_vectors()
+        self.pX = (self.pTE*self.aTE + self.pTM*self.aTM)[0]
+        self.pY = (self.pTE*self.aTE + self.pTM*self.aTM)[1]
 
     @property
     def phi(self):
@@ -101,6 +112,10 @@ class Source:
     def phi(self, phi):
         self._phi = phi
         self._set_k_incident()
+        # Basis depends on k; refresh
+        self._set_tem_vectors()
+        self.pX = (self.pTE*self.aTE + self.pTM*self.aTM)[0]
+        self.pY = (self.pTE*self.aTE + self.pTM*self.aTM)[1]
 
     @property
     def theta(self):
@@ -110,6 +125,10 @@ class Source:
     def theta(self, theta):
         self._theta = theta
         self._set_k_incident()
+        # Basis depends on k; refresh
+        self._set_tem_vectors()
+        self.pX = (self.pTE*self.aTE + self.pTM*self.aTM)[0]
+        self.pY = (self.pTE*self.aTE + self.pTM*self.aTM)[1]
 
     @property
     def k_incident(self):
@@ -117,6 +136,25 @@ class Source:
 
     def _set_k_incident(self):
         self._k_incident = k_vector(self, self.layer, normalize=True)
+
+    # Layer property with refresh side-effects to ensure energy normalization uses correct incident medium
+    @property
+    def layer(self) -> Any:
+        return self._layer
+
+    @layer.setter
+    def layer(self, value: Any) -> None:
+        self._layer = value
+        # Recompute k vector and polarization basis since incident medium changed
+        # Guard against incomplete initialization
+        try:
+            self._set_k_incident()
+            self._set_tem_vectors()
+            self.pX = (self.pTE*self.aTE + self.pTM*self.aTM)[0]
+            self.pY = (self.pTE*self.aTE + self.pTM*self.aTM)[1]
+        except Exception:
+            # During early init, basis may not be ready; it will be set later
+            pass
 
 zeroSource = Source(float("inf"))
 
