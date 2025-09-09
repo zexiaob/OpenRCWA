@@ -382,12 +382,14 @@ class Results:
     @property
     def RTot(self) -> float:
         """Total reflectance."""
-        return self.inner_dict.get('RTot', np.sum(self.R) if hasattr(self.R, '__iter__') else self.R)
-    
+        val = self.inner_dict.get('RTot', np.sum(self.R) if hasattr(self.R, '__iter__') else self.R)
+        return np.array(val) if isinstance(val, (list, tuple, np.ndarray)) else val
+
     @property
     def TTot(self) -> float:
         """Total transmittance."""
-        return self.inner_dict.get('TTot', np.sum(self.T) if hasattr(self.T, '__iter__') else self.T)
+        val = self.inner_dict.get('TTot', np.sum(self.T) if hasattr(self.T, '__iter__') else self.T)
+        return np.array(val) if isinstance(val, (list, tuple, np.ndarray)) else val
     
     @property
     def conservation(self) -> float:

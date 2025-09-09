@@ -106,10 +106,14 @@ def _k_matrix_1D(source: Source, crystal: Crystal,
     KMatrix = complexZeros(matrixShape)
     T1 = crystal.reciprocal_lattice_vectors[0]
 
+    k_incident = np.array(source.k_incident)
+    if k_incident.ndim > 1:
+        k_incident = k_incident[:, 0]
+
     if component == 'x':
-        (incidentWaveVectorxy, T1xy) = x_components(source.k_incident, T1)
+        (incidentWaveVectorxy, T1xy) = x_components(k_incident, T1)
     elif component == 'y':
-        (incidentWaveVectorxy, T1xy) = y_components(source.k_incident, T1)
+        (incidentWaveVectorxy, T1xy) = y_components(k_incident, T1)
     else:
         raise ValueError
 
@@ -131,11 +135,19 @@ def _k_matrix_2D(source, crystal, numberHarmonics, component) -> ArrayLike:
     matrixShape = (matrixSize, matrixSize)
     KMatrix = complexZeros(matrixShape)
 
-    (T1, T2) = np.array(crystal.reciprocal_lattice_vectors) / source.k0
+    k0 = source.k0
+    if np.ndim(k0) != 0:
+        k0 = np.array(k0).reshape(-1)[0]
+    (T1, T2) = np.array(crystal.reciprocal_lattice_vectors) / k0
+
+    k_incident = np.array(source.k_incident)
+    if k_incident.ndim > 1:
+        k_incident = k_incident[:, 0]
+
     if component == 'x':
-        (incidentWaveVectorxy, T1xy, T2xy) = x_components(source.k_incident, T1, T2)
+        (incidentWaveVectorxy, T1xy, T2xy) = x_components(k_incident, T1, T2)
     elif component == 'y':
-        (incidentWaveVectorxy, T1xy, T2xy) = y_components(source.k_incident, T1, T2)
+        (incidentWaveVectorxy, T1xy, T2xy) = y_components(k_incident, T1, T2)
     else:
         raise ValueError
 

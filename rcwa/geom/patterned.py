@@ -16,6 +16,7 @@ import json
 from .shape import Shape
 from ..model.material import Material, TensorMaterial
 from ..model.layer import Layer
+from ..legacy.crystal import Crystal
 
 
 @dataclass
@@ -83,6 +84,48 @@ class PatternedLayer(Layer):
         for shape, material in self.shapes:
             if hasattr(shape, '_param_dependencies'):
                 self._param_dependencies.update(shape._param_dependencies)
+
+        # Provide a Crystal object for solver K-matrix calculations
+        try:
+            a_vec, b_vec = self.lattice
+            self.crystal = Crystal(a_vec, b_vec)
+        except Exception:
+            self.crystal = None
+
+        # Placeholder for source; will be set via property
+        self._source = None
+
+    # Override source handling to propagate to all constituent materials
+    @property
+    def source(self):
+        return self._source
+
+    @source.setter
+    def source(self, source):
+        self._source = source
+        # Propagate source to background and shape materials
+        if hasattr(self.background_material, 'source'):
+            self.background_material.source = source
+        for _, material in self.shapes:
+            if hasattr(material, 'source'):
+                material.source = source
+
+    # Override material property access to use stored convolution matrices
+    @property
+    def er(self):
+        return getattr(self, '_tensor_er', super().er)
+
+    @er.setter
+    def er(self, value):
+        self._tensor_er = value
+
+    @property
+    def ur(self):
+        return getattr(self, '_tensor_ur', super().ur)
+
+    @ur.setter
+    def ur(self, value):
+        self._tensor_ur = value
 
     # ---- Lattice utilities (2D) ----
     @staticmethod
@@ -397,10 +440,15 @@ class PatternedLayer(Layer):
                 er = material.er(wavelength)
             else:
                 # Check if er has been converted to a matrix, if so get the scalar value
-                if isinstance(material.er, np.ndarray) and material.er.shape == (49, 49):
-                    # This material's er has been corrupted by Layer.set_convolution_matrices
-                    # Try to recover the original scalar value
-                    # For a uniform material, all diagonal elements should be the same
+                if (
+                    isinstance(material.er, np.ndarray)
+                    and material.er.ndim == 2
+                    and material.er.shape[0] == material.er.shape[1]
+                    and material.er.shape[0] > 3
+                ):
+                    # Layer.set_convolution_matrices may replace the scalar permittivity
+                    # with its Fourier convolution matrix. For uniform materials we only
+                    # need the scalar value, so take the (0,0) element.
                     er = material.er[0, 0]
                 else:
                     er = material.er
@@ -411,8 +459,14 @@ class PatternedLayer(Layer):
                 ur = material.ur(wavelength)
             else:
                 # Check if ur has been converted to a matrix, if so get the scalar value
-                if isinstance(material.ur, np.ndarray) and material.ur.shape == (49, 49):
-                    # This material's ur has been corrupted by Layer.set_convolution_matrices
+                if (
+                    isinstance(material.ur, np.ndarray)
+                    and material.ur.ndim == 2
+                    and material.ur.shape[0] == material.ur.shape[1]
+                    and material.ur.shape[0] > 3
+                ):
+                    # Similar to the permittivity, recover the scalar permeability from
+                    # its Fourier convolution matrix if it has been expanded.
                     ur = material.ur[0, 0]
                 else:
                     ur = material.ur
@@ -662,18 +716,11 @@ class PatternedLayer(Layer):
         # Store the full set of tensor convolution matrices for the solver
         self._tensor_conv_matrices = conv_matrices
 
-        # For compatibility with parts of the solver that might expect scalar er/ur matrices,
-        # we can assign the zz components as was done in the base Layer for uniform tensors.
+        # Assign zz components for compatibility with existing solver interfaces
         if 'er_zz' in conv_matrices:
-            self.er = conv_matrices['er_zz']
+            self._tensor_er = conv_matrices['er_zz']
         if 'ur_zz' in conv_matrices:
-            self.ur = conv_matrices['ur_zz']
-
-        # Also assign the legacy properties if they exist
-        if hasattr(self, '_tensor_er'):
-            self._tensor_er = self.er
-        if hasattr(self, '_tensor_ur'):
-            self._tensor_ur = self.ur
+            self._tensor_ur = conv_matrices['ur_zz']
 
     def convolution_matrix(self, harmonics_x: np.ndarray, harmonics_y: np.ndarray,
                           tensor_component: str = 'xx') -> np.ndarray:
