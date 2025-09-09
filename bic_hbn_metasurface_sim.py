@@ -12,7 +12,7 @@ px = nm(410) # nm, 晶格x周期
 py = nm(430) # nm, 晶格y周期
 n_SiO2 = 1.45
 n_air = 1.0
-S = 1.7
+S = 0.7
 
 hBN_tensor = TensorMaterial(epsilon_tensor=epsilon_tensor_dispersion, name="hBN_dispersion")
 lat = rectangular_lattice(px * S, py * S)
@@ -46,7 +46,7 @@ stack = Stack(
 )
 
 
-wavelengths = np.linspace(nm(800), nm(1000), 100)  # nm, 用较少点加快测试
+wavelengths = np.linspace(40, 1000, 100)  # nm, 用较少点加快测试
 TTot_list = []
 RTot_list = []
 
