@@ -30,10 +30,36 @@ def omega_squared_matrix(P: ArrayLike, Q: ArrayLike):
     return P @ Q
 
 def A_matrix(Wi, Wj, Vi, Vj):
-    return np.linalg.inv(Wi) @ Wj + inv(Vi) @ Vj;
+    """Construct the A matrix while handling possible singular matrices.
+
+    This helper attempts a direct inversion of *Wi* and *Vi* but falls back to a
+    pseudo-inverse when a singular matrix is encountered.  The previous
+    implementation used ``np.linalg.inv`` exclusively which raised a
+    ``LinAlgError`` when matrices became singular, as observed in the
+    ``bic_hbn_metasurface_sim`` example.  Using a pseudo-inverse allows the RCWA
+    solver to proceed in such cases instead of terminating.
+    """
+    try:
+        Wi_inv = np.linalg.inv(Wi)
+    except np.linalg.LinAlgError:
+        Wi_inv = np.linalg.pinv(Wi)
+    try:
+        Vi_inv = np.linalg.inv(Vi)
+    except np.linalg.LinAlgError:
+        Vi_inv = np.linalg.pinv(Vi)
+    return Wi_inv @ Wj + Vi_inv @ Vj;
 
 def B_matrix(Wi, Wj, Vi, Vj):
-    return np.linalg.inv(Wi) @ Wj - inv(Vi) @ Vj;
+    """Construct the B matrix with safe inversion (see :func:`A_matrix`)."""
+    try:
+        Wi_inv = np.linalg.inv(Wi)
+    except np.linalg.LinAlgError:
+        Wi_inv = np.linalg.pinv(Wi)
+    try:
+        Vi_inv = np.linalg.inv(Vi)
+    except np.linalg.LinAlgError:
+        Vi_inv = np.linalg.pinv(Vi)
+    return Wi_inv @ Wj - Vi_inv @ Vj;
 
 def D_matrix(Ai, Bi, Xi):
     AiInverse = np.linalg.inv(Ai);
