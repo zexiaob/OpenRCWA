@@ -56,6 +56,11 @@ def test_bic_hbn_metasurface_sim():
     solver = Solver(layer_stack=stack, source=src, n_harmonics=(3, 3))
     results = solver.solve(wavelength=wavelengths)
 
+    print(results.TTot)
+    print(results.RTot)
+    print(results.jones_matrix)
+    print(results.phase_difference)
+    
     # 断言结果合理
     assert hasattr(results, 'TTot')
     assert len(results.TTot) == len(wavelengths)

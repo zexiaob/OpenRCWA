@@ -8,7 +8,6 @@ def epsilon_tensor_dispersion(wavelength_nm):
     """
     # Ensure wavelength_nm is a numpy array for vectorized operations
     wavelength_nm = np.array(wavelength_nm)
-
     # Sellmeier equation parameters for hBN (example, replace with real data)
     # These are just placeholder values for demonstration
     B1_o, C1_o = 1.8, 200**2

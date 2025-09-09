@@ -1,0 +1,20 @@
+Layer Stack 3D Visualization Info:
+========================================
+
+Cell size: (6.970000000000001e-07, 7.310000000000001e-07)
+Z-scale factor: 1000000.0
+Alpha: 0.7
+
+Layers (from top to bottom):
+------------------------------
+Superstrate: <rcwa.model.layer.Layer object at 0x12ac70650>
+  Thickness: 0.20 (scaled)
+  Color: (0.121, 0.466, 0.705)
+
+Layer 1: <rcwa.model.material.Material object at 0x1050efce0>
+  Thickness: 2.55e-07 m (0.26 scaled)
+  Color: (1.0, 0.498, 0.054)
+
+Substrate: <rcwa.model.layer.Layer object at 0x12ac70b00>
+  Thickness: 0.20 (scaled)
+  Color: (0.172, 0.627, 0.172)
