@@ -1,40 +1,37 @@
 import numpy as np
-from rcwa import Material, TensorMaterial, Layer, PatternedLayer, Stack, Source, Solver, Rectangle, rectangular_lattice, Air, SiO2, HalfSpace, nm
+from rcwa import Material, TensorMaterial, Layer, PatternedLayer, Stack, Source, Solver, Rectangle, rectangular_lattice, Air, SiO2, HalfSpace, nm, um
 from n_tensor_test import epsilon_tensor_dispersion
 
 
 # 参数区
 h = nm(150)  # nm, 高度
 w = nm(100)  # nm, 宽度
-L1 = nm(310) # nm, 棒1长度
-L2 = nm(360) # nm, 棒2长度
-px = nm(410) # nm, 晶格x周期
-py = nm(430) # nm, 晶格y周期
+L1 = nm(310)  # nm, 棒1长度
+L2 = nm(360)  # nm, 棒2长度
+px = nm(410)  # nm, 晶格x周期
+py = nm(430)  # nm, 晶格y周期
 n_SiO2 = 1.45
 n_air = 1.0
-S = 0.7
+S = 1.7
 
 hBN_tensor = TensorMaterial(epsilon_tensor=epsilon_tensor_dispersion, name="hBN_dispersion")
 lat = rectangular_lattice(px * S, py * S)
 
-# 棒1位置和尺寸
-x1_min, x1_max = -w/2 * S, w/2 * S
-y1_c = -py/4 * S
-y1_min, y1_max = y1_c - L1/2 * S, y1_c + L1/2 * S
-# 棒2位置和尺寸
-x2_min, x2_max = -w/2 * S, w/2 * S
-y2_c = py/4 * S
-y2_min, y2_max = y2_c - L2/2 * S, y2_c + L2/2 * S
+# 归一化到晶胞周期
+w_norm  = w / px
+L1_norm = L1 / py
+L2_norm = L2 / py
 
-rod1 = Rectangle(center=(0.0, y1_c), width=w*S, height=L1*S)
-rod2 = Rectangle(center=(0.0, y2_c), width=w*S, height=L2*S)
+rod1 = Rectangle(center=(0.5, 0.25), width=w_norm, height=L1_norm)  # 下移 py/4
+rod2 = Rectangle(center=(0.5, 0.75), width=w_norm, height=L2_norm)  # 上移 py/4
+
 
 
 patterned = PatternedLayer(
     thickness=h,
     lattice=lat,
     shapes=[(rod1, hBN_tensor), (rod2, hBN_tensor)],
-    background_material=SiO2(n=n_SiO2),
+    background_material=Air(),
 )
 
 substrate = HalfSpace(material=SiO2(n=n_SiO2))
@@ -46,7 +43,7 @@ stack = Stack(
 )
 
 
-wavelengths = np.linspace(40, 1000, 100)  # nm, 用较少点加快测试
+wavelengths = np.linspace(0.9, 0.95, 100)  # um, 用较少点加快测试
 TTot_list = []
 RTot_list = []
 
@@ -57,7 +54,7 @@ src = Source(
     pTEM=[0, 1],
 )
 hBN_tensor.source = src
-solver = Solver(layer_stack=stack, source=src, n_harmonics=(7, 7))
+solver = Solver(layer_stack=stack, source=src, n_harmonics=(11, 11))
 
 for wl in wavelengths:
     src.wavelength = wl

@@ -1,13 +1,13 @@
 import numpy as np
 from rcwa import TensorMaterial
 
-def epsilon_tensor_dispersion(wavelength_nm):
+def epsilon_tensor_dispersion(wavelength_um):
     """
     Calculates the anisotropic epsilon tensor for hBN based on wavelength.
     This function is vectorized to handle both scalar and array inputs for wavelength.
     """
     # Ensure wavelength_nm is a numpy array for vectorized operations
-    wavelength_nm = np.array(wavelength_nm)
+    wavelength_nm = np.array(wavelength_um) * 1000  # Convert um to nm
     # Sellmeier equation parameters for hBN (example, replace with real data)
     # These are just placeholder values for demonstration
     B1_o, C1_o = 1.8, 200**2
