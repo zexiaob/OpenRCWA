@@ -43,7 +43,7 @@ stack = Stack(
 )
 
 
-wavelengths = np.linspace(nm(900), nm(950), 100)  # um, 用较少点加快测试
+wavelengths = np.linspace(nm(175), nm(250), 1000)  # nm, 用较少点加快测试
 TTot_list = []
 RTot_list = []
 
@@ -54,7 +54,7 @@ src = Source(
     pTEM=[0, 1],
 )
 hBN_tensor.source = src
-solver = Solver(layer_stack=stack, source=src, n_harmonics=(11, 11))
+solver = Solver(layer_stack=stack, source=src, n_harmonics=(3, 3))
 
 for wl in wavelengths:
     src.wavelength = wl
