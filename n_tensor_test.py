@@ -10,8 +10,8 @@ def epsilon_tensor_dispersion(wavelength_m):
     wavelength_nm = np.array(wavelength_m) * 1e9  # Convert m to nm
     # Sellmeier equation parameters for hBN (example, replace with real data)
     # These are just placeholder values for demonstration
-    B1_o, C1_o = 1.8, 200**2
-    B1_e, C1_e = 2.2, 220**2
+    B1_o, C1_o = 3.3361, 26322   # ordinary / in-plane
+    B1_e, C1_e = 2.2631, 26981   # extraordinary / out-of-plane
 
     # Calculate n^2 using Sellmeier equation
     n_o_sq = 1 + (B1_o * wavelength_nm**2) / (wavelength_nm**2 - C1_o)

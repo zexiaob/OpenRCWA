@@ -423,7 +423,7 @@ class PatternedLayer(Layer):
             if wavelength is not None:
                 from rcwa.solve.source import Source
                 # Create a temporary source for this single wavelength
-                temp_source = Source(wavelength=wavelength * 1e9) # convert back to nm
+                temp_source = Source(wavelength=wavelength)
                 material.source = temp_source
 
             epsilon_tensor = material.epsilon_tensor
