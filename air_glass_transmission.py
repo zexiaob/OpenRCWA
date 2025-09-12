@@ -409,7 +409,7 @@ def main():
     print("2. 玻璃 -> 空气 (反向, 全内反射)")
     print("3. 两种都运行")
     
-    choice = input("请选择 (1/2/3) [默认=2]: ").strip()
+    choice = 3
     if not choice:
         choice = "2"
     

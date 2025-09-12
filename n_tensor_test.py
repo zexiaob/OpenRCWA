@@ -1,5 +1,5 @@
 import numpy as np
-from rcwa import TensorMaterial
+from rcwa import TensorMaterial,nm
 
 def epsilon_tensor_dispersion(wavelength_m):
     """
@@ -36,7 +36,10 @@ def epsilon_tensor_dispersion(wavelength_m):
 
 # 用法示例：
 # 创建一个色散各向异性材料
-ani_disp = TensorMaterial(epsilon_tensor=epsilon_tensor_dispersion, name="test_dispersion_tensor")
+for wl in np.arange(nm(400), nm(701), nm(100)):  # 400nm到700nm，步长100nm
+    print(f"Wavelength: {wl*1e9} nm")
+    print(epsilon_tensor_dispersion(wl))
+    print()
 
 # 你可以直接用于 Layer 或仿真
 # from rcwa import Layer

@@ -38,17 +38,18 @@ patterned = PatternedLayer(
     background_material=SiO2(n=n_SiO2),
 )
 
+layer = Layer(thickness=h, material=hBN_tensor)
 substrate = HalfSpace(material=SiO2(n=n_SiO2))
 superstrate = HalfSpace(material=Air())
 stack = Stack(
     substrate=substrate,
     superstrate=superstrate,
-    layers=[patterned],
+    layers=[layer],
 )
 
 
 import pandas as pd
-wavelengths = np.linspace(nm(500), nm(1000), 1000)  # 米
+wavelengths = np.linspace(nm(500), nm(1000), 500)  # 米
 TTot_list = []
 RTot_list = []
 
@@ -61,8 +62,8 @@ def get_first(val):
 for wl in wavelengths:
     src = Source(
         wavelength=wl,
-        theta=0.0,
-        phi=0.0,
+        theta=0.01,
+        phi=0.01,
         pTEM=[0, 1],
     )
     hBN_tensor = TensorMaterial(epsilon_tensor=epsilon_tensor_dispersion, name="hBN_dispersion")
@@ -78,9 +79,9 @@ for wl in wavelengths:
     stack = Stack(
         substrate=substrate,
         superstrate=superstrate,
-        layers=[patterned],
+        layers=[layer],
     )
-    solver = Solver(layer_stack=stack, source=src, n_harmonics=(3, 3))
+    solver = Solver(layer_stack=stack, source=src, n_harmonics=(7, 7))
     result = solver.solve(wavelength=[wl])
     TTot_list.append(get_first(result.TTot) if hasattr(result, 'TTot') else np.nan)
     RTot_list.append(get_first(result.RTot) if hasattr(result, 'RTot') else np.nan)

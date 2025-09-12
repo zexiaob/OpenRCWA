@@ -620,6 +620,17 @@ class TensorMaterial:
             return TensorMaterial(epsilon_tensor=epsilon_tensor, mu_tensor=mu_tensor,
                                 name=f"{self.name}_rotated", source=self.source)
 
+        @property
+        def er(self):
+            """
+            Returns the main diagonal of the epsilon tensor (xx, yy, zz).
+            This is for compatibility with Layer expecting a scalar or vector er.
+            """
+            eps = self.epsilon_tensor
+            if eps.shape == (3, 3):
+                return np.diag(eps)
+            return eps
+
 
 # --- Public helpers: build dispersion functions from tabulated data ---
 
