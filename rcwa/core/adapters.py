@@ -138,9 +138,9 @@ class LayerTensorAdapter:
         """
         if not layer.is_anisotropic:
             raise ValueError("Layer must have tensor material for tensor P matrix calculation")
-        
-        epsilon_tensor = layer.tensor_material.epsilon_tensor
-        
+
+        epsilon_tensor, _ = LayerTensorAdapter._extract_epsilon_mu(layer)
+
         # For homogeneous case (scalar Kx, Ky)
         if not isinstance(Kx, np.ndarray):
             return LayerTensorAdapter._P_matrix_tensor_homogeneous(epsilon_tensor, Kx, Ky)
@@ -210,14 +210,51 @@ class LayerTensorAdapter:
         """
         if not layer.is_anisotropic:
             raise ValueError("Layer must have tensor material for tensor Q matrix calculation")
-        
-        mu_tensor = layer.tensor_material.mu_tensor
-        epsilon_tensor = layer.tensor_material.epsilon_tensor
-        
+
+        epsilon_tensor, mu_tensor = LayerTensorAdapter._extract_epsilon_mu(layer)
+
         if not isinstance(Kx, np.ndarray):
             return LayerTensorAdapter._Q_matrix_tensor_homogeneous(mu_tensor, epsilon_tensor, Kx, Ky)
         else:
             return LayerTensorAdapter._Q_matrix_tensor_general(mu_tensor, epsilon_tensor, Kx, Ky)
+
+    @staticmethod
+    def _extract_epsilon_mu(layer) -> Tuple[ArrayLike, ArrayLike]:
+        """Extract effective epsilon and mu tensors from a layer.
+
+        Supports both uniform tensor-material layers and patterned layers that
+        store anisotropy in ``_tensor_conv_matrices``. For patterned layers the
+        zero-order Fourier coefficient of each convolution matrix is used as an
+        effective tensor element. Missing tensor components default to unity on
+        the diagonal and zero elsewhere.
+        """
+
+        if getattr(layer, 'tensor_material', None) is not None:
+            eps = layer.tensor_material.epsilon_tensor
+            mu = layer.tensor_material.mu_tensor
+            return np.array(eps, dtype=complex), np.array(mu, dtype=complex)
+
+        conv = getattr(layer, '_tensor_conv_matrices', {}) or {}
+        axes = ['x', 'y', 'z']
+        eps = np.zeros((3, 3), dtype=complex)
+        mu = np.zeros((3, 3), dtype=complex)
+
+        for i, ai in enumerate(axes):
+            for j, aj in enumerate(axes):
+                e_key = f'er_{ai}{aj}'
+                m_key = f'ur_{ai}{aj}'
+                e_mat = conv.get(e_key)
+                m_mat = conv.get(m_key)
+                if e_mat is not None:
+                    eps[i, j] = e_mat[0, 0] if isinstance(e_mat, np.ndarray) else e_mat
+                elif i == j:
+                    eps[i, j] = 1.0
+                if m_mat is not None:
+                    mu[i, j] = m_mat[0, 0] if isinstance(m_mat, np.ndarray) else m_mat
+                elif i == j:
+                    mu[i, j] = 1.0
+
+        return eps, mu
     
     @staticmethod
     def _Q_matrix_tensor_homogeneous(mu_tensor: ArrayLike, epsilon_tensor: ArrayLike, 
