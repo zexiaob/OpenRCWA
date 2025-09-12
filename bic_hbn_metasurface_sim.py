@@ -43,7 +43,7 @@ stack = Stack(
 )
 
 
-wavelengths = np.linspace(nm(175), nm(250), 1000)  # nm, 用较少点加快测试
+wavelengths = np.linspace(nm(500), nm(1000), 1000)  # nm, 用较少点加快测试
 TTot_list = []
 RTot_list = []
 
