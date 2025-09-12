@@ -1,6 +1,20 @@
 import numpy as np
 import pytest
-from rcwa import Material, TensorMaterial, Layer, PatternedLayer, Stack, Source, Solver, Rectangle, rectangular_lattice, Air, SiO2, HalfSpace, nm
+from rcwa import (
+    Material,
+    TensorMaterial,
+    Layer,
+    PatternedLayer,
+    Stack,
+    Source,
+    Solver,
+    Rectangle,
+    rectangular_lattice,
+    Air,
+    SiO2,
+    HalfSpace,
+    nm,
+)
 from n_tensor_test import epsilon_tensor_dispersion
 
 def test_bic_hbn_metasurface_sim():
@@ -15,20 +29,23 @@ def test_bic_hbn_metasurface_sim():
     n_air = 1.0
     S = 1.0
 
-    hBN_tensor = TensorMaterial(epsilon_tensor=epsilon_tensor_dispersion, name="hBN_dispersion")
+    hBN_tensor = TensorMaterial(
+        epsilon_tensor=epsilon_tensor_dispersion, name="hBN_dispersion"
+    )
     lat = rectangular_lattice(px * S, py * S)
 
-    # 棒1位置和尺寸
-    x1_min, x1_max = -w/2 * S, w/2 * S
-    y1_c = -py/4 * S
-    y1_min, y1_max = y1_c - L1/2 * S, y1_c + L1/2 * S
-    # 棒2位置和尺寸
-    x2_min, x2_max = -w/2 * S, w/2 * S
-    y2_c = py/4 * S
-    y2_min, y2_max = y2_c - L2/2 * S, y2_c + L2/2 * S
+    # 使用归一化晶胞坐标 (0~1)
+    w_norm = w / px
+    L1_norm = L1 / py
+    L2_norm = L2 / py
+    rod1 = Rectangle(center=(0.5, 0.25), width=w_norm, height=L1_norm)  # 下移 py/4
+    rod2 = Rectangle(center=(0.5, 0.75), width=w_norm, height=L2_norm)  # 上移 py/4
 
-    rod1 = Rectangle(center=(0.0, y1_c), width=w*S, height=L1*S)
-    rod2 = Rectangle(center=(0.0, y2_c), width=w*S, height=L2*S)
+    # 验证 Rectangle.contains 在归一化坐标下工作正常
+    assert rod1.contains(0.5, 0.25)
+    assert not rod1.contains(0.5, 0.75)
+    assert rod2.contains(0.5, 0.75)
+    assert not rod2.contains(0.5, 0.25)
 
     patterned = PatternedLayer(
         thickness=h*S*1e-9,
@@ -45,7 +62,7 @@ def test_bic_hbn_metasurface_sim():
         layers=[patterned],
     )
 
-    wavelengths = np.linspace(400, 1000, 11)  # nm, 用较少点加快测试
+    wavelengths = nm(np.linspace(400, 1000, 11))  # 用较少点加快测试
     src = Source(
         wavelength=wavelengths,
         theta=0.0,
