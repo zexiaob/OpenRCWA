@@ -681,6 +681,11 @@ class PatternedLayer(Layer):
         """
         Overrides the base Layer method to generate convolution matrices for the pattern.
         This method is called by the solver during the simulation setup.
+
+        Notes
+        -----
+        Assumes the associated ``Source`` object provides its wavelength in the
+        same units as the layer geometry (SI units, meters).
         """
         # Ensure n_harmonics is a tuple (Nh_x, Nh_y)
         if isinstance(n_harmonics, int):
@@ -703,15 +708,16 @@ class PatternedLayer(Layer):
         
         # Use a representative wavelength for the calculation. For sweeps, this might be re-evaluated.
         # The caching mechanism within to_convolution_matrices will handle different wavelengths.
-        wavelength_nm = self.source.wavelength
-        if isinstance(wavelength_nm, (np.ndarray, list, tuple)):
+        # Assumes the Source wavelength is already expressed in the same units as the geometry (meters).
+        wavelength = self.source.wavelength
+        if isinstance(wavelength, (np.ndarray, list, tuple)):
             # Use the central wavelength for single-point calculation if sweeping
-            wavelength_nm = wavelength_nm[len(wavelength_nm) // 2]
+            wavelength = wavelength[len(wavelength) // 2]
 
-        wavelength_m = float(wavelength_nm) * 1e-9 # Convert nm to meters
+        wavelength = float(wavelength)
 
         # Generate the full set of convolution matrices
-        conv_matrices = self.to_convolution_matrices(harmonics=harmonics_tuple, wavelength=wavelength_m)
+        conv_matrices = self.to_convolution_matrices(harmonics=harmonics_tuple, wavelength=wavelength)
 
         # Store the full set of tensor convolution matrices for the solver
         self._tensor_conv_matrices = conv_matrices
