@@ -206,7 +206,13 @@ class MatrixCalculator:
     """
 
     def P_matrix(self):
-        # Check if this layer has tensor materials
+        """Return the appropriate :math:`P` matrix for the layer.
+
+        Anisotropic layers—either uniform tensor materials or patterned layers
+        that store their anisotropy in convolution matrices—delegate to the tensor
+        adapter.  Isotropic layers fall back to the classic formulations.
+        """
+
         if hasattr(self, 'is_anisotropic') and self.is_anisotropic:
             return self._P_matrix_tensor()
         elif isinstance(self.Kx, np.ndarray):
@@ -237,7 +243,11 @@ class MatrixCalculator:
         return P
 
     def Q_matrix(self):
-        # Check if this layer has tensor materials
+        """Return the appropriate :math:`Q` matrix for the layer.
+
+        Behaviour mirrors :func:`P_matrix`.
+        """
+
         if hasattr(self, 'is_anisotropic') and self.is_anisotropic:
             return self._Q_matrix_tensor()
         elif isinstance(self.Kx, np.ndarray):
