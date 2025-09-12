@@ -67,6 +67,9 @@ class PatternedLayer(Layer):
         self.lattice = lattice
         self.shapes = shapes.copy() if shapes else []
         self.background_material = background_material
+        # Determine if any materials require anisotropic treatment
+        self.is_anisotropic = isinstance(background_material, TensorMaterial) \
+            or any(isinstance(m, TensorMaterial) for _, m in self.shapes)
         self.raster_config = raster_config or RasterConfig()
         self.params = params.copy() if params else {}
         # Track global in-plane rotation (radians) for caching and transforms
