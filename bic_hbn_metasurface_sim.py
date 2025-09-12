@@ -22,16 +22,20 @@ w_norm  = w / px
 L1_norm = L1 / py
 L2_norm = L2 / py
 
-rod1 = Rectangle(center=(0.5, 0.25), width=w_norm, height=L1_norm)  # 下移 py/4
-rod2 = Rectangle(center=(0.5, 0.75), width=w_norm, height=L2_norm)  # 上移 py/4
+
+# Rectangle的center参数应在归一化晶胞内，通常(0.5, y)表示x居中，y为归一化位置
+rod1 = Rectangle(center=(0.5, 0.25), width=w_norm, height=L1_norm)
+rod2 = Rectangle(center=(0.5, 0.75), width=w_norm, height=L2_norm)
 
 
 
+
+# background_material建议用SiO2以与substrate一致
 patterned = PatternedLayer(
     thickness=h,
     lattice=lat,
     shapes=[(rod1, hBN_tensor), (rod2, hBN_tensor)],
-    background_material=Air(),
+    background_material=SiO2(n=n_SiO2),
 )
 
 substrate = HalfSpace(material=SiO2(n=n_SiO2))
@@ -43,28 +47,41 @@ stack = Stack(
 )
 
 
-wavelengths = np.linspace(nm(500), nm(1000), 1000)  # nm, 用较少点加快测试
+import pandas as pd
+wavelengths = np.linspace(nm(500), nm(1000), 1000)  # 米
 TTot_list = []
 RTot_list = []
 
-src = Source(
-    wavelength=wavelengths[0],  # 先用第一个波长初始化
-    theta=0,
-    phi=0,
-    pTEM=[0, 1],
-)
-hBN_tensor.source = src
-solver = Solver(layer_stack=stack, source=src, n_harmonics=(3, 3))
+
+def get_first(val):
+    if hasattr(val, '__len__') and not isinstance(val, str):
+        return val[0]
+    return val
 
 for wl in wavelengths:
-    src.wavelength = wl
-    hBN_tensor.source = src  # 确保材料绑定当前 source
+    src = Source(
+        wavelength=wl,
+        theta=0.0,
+        phi=0.0,
+        pTEM=[0, 1],
+    )
+    hBN_tensor = TensorMaterial(epsilon_tensor=epsilon_tensor_dispersion, name="hBN_dispersion")
+    hBN_tensor.source = src
+    rod1 = Rectangle(center=(0.5, 0.25), width=w_norm, height=L1_norm)
+    rod2 = Rectangle(center=(0.5, 0.75), width=w_norm, height=L2_norm)
+    patterned = PatternedLayer(
+        thickness=h,
+        lattice=lat,
+        shapes=[(rod1, hBN_tensor), (rod2, hBN_tensor)],
+        background_material=SiO2(n=n_SiO2),
+    )
+    stack = Stack(
+        substrate=substrate,
+        superstrate=superstrate,
+        layers=[patterned],
+    )
+    solver = Solver(layer_stack=stack, source=src, n_harmonics=(3, 3))
     result = solver.solve(wavelength=[wl])
-    # 兼容 TTot/RTot 可能为标量或数组
-    def get_first(val):
-        if hasattr(val, '__len__') and not isinstance(val, str):
-            return val[0]
-        return val
     TTot_list.append(get_first(result.TTot) if hasattr(result, 'TTot') else np.nan)
     RTot_list.append(get_first(result.RTot) if hasattr(result, 'RTot') else np.nan)
 
@@ -74,8 +91,8 @@ RTot_arr = np.array(RTot_list)
 print("TTot:", TTot_arr)
 print("RTot:", RTot_arr)
 
+
 # 保存数据到 CSV 文件，方便后续绘图和分析
-import pandas as pd
 df = pd.DataFrame({
     'wavelength': wavelengths,
     'TTot': TTot_arr,
@@ -84,8 +101,8 @@ df = pd.DataFrame({
 df.to_csv('bic_hbn_metasurface_results.csv', index=False)
 
 
+
 # 合理性断言（可选）
-import numpy as np
 assert len(TTot_arr) == len(wavelengths)
 assert np.all(np.isfinite(TTot_arr))
 assert np.all(TTot_arr >= 0) and np.all(TTot_arr <= 1)
