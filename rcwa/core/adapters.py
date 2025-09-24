@@ -139,13 +139,9 @@ class LayerTensorAdapter:
         if not layer.is_anisotropic:
             raise ValueError("Layer must have tensor material for tensor P matrix calculation")
 
-        epsilon_tensor, _ = LayerTensorAdapter._extract_epsilon_mu(layer)
-
-        # For homogeneous case (scalar Kx, Ky)
-        if not isinstance(Kx, np.ndarray):
-            return LayerTensorAdapter._P_matrix_tensor_homogeneous(epsilon_tensor, Kx, Ky)
-        else:
-            return LayerTensorAdapter._P_matrix_tensor_general(epsilon_tensor, Kx, Ky)
+        blocks = LayerTensorAdapter._compute_tensor_blocks(layer, Kx, Ky)
+        layer._tensor_blocks = blocks
+        return blocks['P']
     
     @staticmethod
     def _P_matrix_tensor_homogeneous(epsilon_tensor: ArrayLike, Kx: complex, Ky: complex) -> ArrayLike:
@@ -211,12 +207,124 @@ class LayerTensorAdapter:
         if not layer.is_anisotropic:
             raise ValueError("Layer must have tensor material for tensor Q matrix calculation")
 
-        epsilon_tensor, mu_tensor = LayerTensorAdapter._extract_epsilon_mu(layer)
+        blocks = getattr(layer, '_tensor_blocks', None)
+        if blocks is None:
+            blocks = LayerTensorAdapter._compute_tensor_blocks(layer, Kx, Ky)
+            layer._tensor_blocks = blocks
+        return blocks['Q']
+
+    @staticmethod
+    def _compute_tensor_blocks(layer, Kx: ArrayLike, Ky: ArrayLike) -> Dict[str, ArrayLike]:
+        """Compute the first-order system blocks for tensor materials."""
+
+        conv = getattr(layer, '_tensor_conv_matrices', None)
+        if conv is None:
+            if getattr(layer, 'tensor_material', None) is None:
+                raise ValueError("Tensor material data unavailable for anisotropic layer")
+            from rcwa.core.adapters import TensorToConvolutionAdapter  # type: ignore
+            conv = TensorToConvolutionAdapter.tensor_to_convolution_matrices(
+                layer.tensor_material.epsilon_tensor,
+                layer.tensor_material.mu_tensor,
+                1,
+            )
+
+        def _component(prefix: str, comp: str) -> ArrayLike:
+            key = f'{prefix}_{comp}'
+            mat = conv.get(key)
+            if mat is None:
+                # Default: identity for diagonal terms, zero otherwise
+                axes = comp[0] == comp[1]
+                size = 1
+                if isinstance(Kx, np.ndarray):
+                    size = Kx.shape[0]
+                if axes:
+                    return np.identity(size, dtype=complex)
+                return np.zeros((size, size), dtype=complex)
+            mat = np.array(mat, dtype=complex)
+            if mat.ndim == 0:
+                size = 1
+                if isinstance(Kx, np.ndarray):
+                    size = Kx.shape[0]
+                if size == 1:
+                    return np.array([[mat]], dtype=complex)
+                return mat * np.identity(size, dtype=complex)
+            return mat
 
         if not isinstance(Kx, np.ndarray):
-            return LayerTensorAdapter._Q_matrix_tensor_homogeneous(mu_tensor, epsilon_tensor, Kx, Ky)
+            Kx_mat = np.array([[Kx]], dtype=complex)
         else:
-            return LayerTensorAdapter._Q_matrix_tensor_general(mu_tensor, epsilon_tensor, Kx, Ky)
+            Kx_mat = np.array(Kx, dtype=complex)
+        if not isinstance(Ky, np.ndarray):
+            Ky_mat = np.array([[Ky]], dtype=complex)
+        else:
+            Ky_mat = np.array(Ky, dtype=complex)
+
+        exx = _component('er', 'xx')
+        exy = _component('er', 'xy')
+        exz = _component('er', 'xz')
+        eyx = _component('er', 'yx')
+        eyy = _component('er', 'yy')
+        eyz = _component('er', 'yz')
+        ezx = _component('er', 'zx')
+        ezy = _component('er', 'zy')
+        ezz = _component('er', 'zz')
+
+        mxx = _component('ur', 'xx')
+        mxy = _component('ur', 'xy')
+        mxz = _component('ur', 'xz')
+        myx = _component('ur', 'yx')
+        myy = _component('ur', 'yy')
+        myz = _component('ur', 'yz')
+        mzx = _component('ur', 'zx')
+        mzy = _component('ur', 'zy')
+        mzz = _component('ur', 'zz')
+
+        eps_tt = np.block([[exx, exy], [eyx, eyy]])
+        eps_tz = np.vstack((exz, eyz))
+        eps_zt = np.hstack((ezx, ezy))
+        eps_zz = ezz if isinstance(ezz, np.ndarray) and ezz.ndim == 2 else np.array([[ezz]])
+
+        mu_tt = np.block([[mxx, mxy], [myx, myy]])
+        mu_tz = np.vstack((mxz, myz))
+        mu_zt = np.hstack((mzx, mzy))
+        mu_zz = mzz if isinstance(mzz, np.ndarray) and mzz.ndim == 2 else np.array([[mzz]])
+
+        try:
+            eps_zz_inv = np.linalg.inv(eps_zz)
+        except np.linalg.LinAlgError:
+            eps_zz_inv = np.linalg.pinv(eps_zz)
+
+        try:
+            mu_zz_inv = np.linalg.inv(mu_zz)
+        except np.linalg.LinAlgError:
+            mu_zz_inv = np.linalg.pinv(mu_zz)
+
+        C = np.hstack((-Ky_mat, Kx_mat))
+        S = np.vstack((Kx_mat, Ky_mat))
+
+        size_n = Kx_mat.shape[0]
+        identity = np.identity(size_n, dtype=complex)
+        J = np.block([
+            [np.zeros((size_n, size_n), dtype=complex), identity],
+            [-identity, np.zeros((size_n, size_n), dtype=complex)]
+        ])
+
+        mu_eff = mu_tt - mu_tz @ mu_zz_inv @ mu_zt
+        eps_eff = eps_tt - eps_tz @ eps_zz_inv @ eps_zt
+
+        P = -S @ eps_zz_inv @ C + mu_eff @ J
+        R = -S @ eps_zz_inv @ eps_zt - mu_tz @ mu_zz_inv @ C
+        Q = -S @ mu_zz_inv @ C + eps_eff @ J
+        S_mat = -S @ mu_zz_inv @ mu_zt + eps_tz @ eps_zz_inv @ C
+
+        return {
+            'P': P,
+            'Q': Q,
+            'R': R,
+            'S': S_mat,
+            'eps_zz_inv': eps_zz_inv,
+            'mu_zz_inv': mu_zz_inv,
+        }
 
     @staticmethod
     def _extract_epsilon_mu(layer) -> Tuple[ArrayLike, ArrayLike]:
@@ -314,7 +422,7 @@ class EigensolverTensorAdapter:
     """
     
     @staticmethod
-    def solve_tensor_eigenproblem(P: ArrayLike, Q: ArrayLike) -> Tuple[ArrayLike, ArrayLike, ArrayLike]:
+    def solve_tensor_eigenproblem(layer, P: ArrayLike, Q: ArrayLike) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
         """
         Solve the generalized eigenvalue problem for tensor materials.
         
@@ -325,25 +433,32 @@ class EigensolverTensorAdapter:
         :param Q: Q matrix from tensor calculations
         :return: Tuple of (eigenvalues, eigenvectors, Lambda matrix)
         """
-        # Calculate omega squared matrix
-        OmegaSquared = P @ Q
-        
-        # Solve eigenvalue problem
-        eigenValues, W = np.linalg.eig(OmegaSquared)
-        
-        # Ensure proper branch cuts for square root (important for passive materials)
-        # Take square root with correct sign convention for RCWA
-        Lambda_diag = np.sqrt(eigenValues + 0j)  # Ensure complex type
-        
-        # Fix branch cuts: for lossless materials, choose positive imaginary part
-        # for evanescent modes and positive real part for propagating modes
+        blocks = getattr(layer, '_tensor_blocks', None)
+        if blocks is None:
+            blocks = LayerTensorAdapter._compute_tensor_blocks(layer, layer.Kx, layer.Ky)
+            layer._tensor_blocks = blocks
+
+        R = blocks['R']
+        S = blocks['S']
+
+        top = np.hstack((R, P))
+        bottom = np.hstack((Q, S))
+        system_matrix = np.vstack((top, bottom))
+
+        eigenValues, eigenVectors = np.linalg.eig(system_matrix)
+
+        # Arrange eigenvectors into electric and magnetic partitions
+        n = P.shape[0]
+        W = eigenVectors[:n, :]
+        V = eigenVectors[n:, :]
+
+        Lambda_diag = np.array(eigenValues, dtype=complex)
         for i, val in enumerate(Lambda_diag):
             if np.imag(val) < 0:
                 Lambda_diag[i] = -val
-        
         Lambda = np.diag(Lambda_diag)
-        
-        return eigenValues, W, Lambda
+
+        return eigenValues, W, Lambda, V
 
 
 # Convenience functions for easy integration
