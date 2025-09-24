@@ -118,7 +118,7 @@ def main(save_plots: bool = False) -> None:
     repo_root = Path(__file__).resolve().parent
 
     thickness = nm(500.0)
-    n_x, n_y, n_z = 1.5, 2.0, 1.5  # assume optic axis aligned with z and matches n_x
+    n_x, n_y, n_z = 1.5, 1.5, 1.5  # assume optic axis aligned with z and matches n_x
 
     stack = build_stack(thickness, n_x, n_y, n_z)
 
@@ -211,4 +211,4 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    main(save_plots=args.save_plots)
+    main(save_plots=False)
