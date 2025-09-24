@@ -98,7 +98,12 @@ def extract_circular_channels(results) -> Tuple[np.ndarray, np.ndarray, np.ndarr
     R_LCP, R_RCP, T_LCP, T_RCP = [], [], [], []
 
     for res in results:
-        r_l_amp, r_r_amp = project_circular(res.rx, res.ry, direction=-1)
+        # Use the same (+z) basis for both reflection and transmission so that
+        # an isotropic stack yields a diagonal Jones matrix in this basis. This
+        # makes it easy to diagnose helicity conversion introduced solely by
+        # anisotropy rather than by the choice of reference frame for the
+        # reflected wave (whose propagation direction is -z).
+        r_l_amp, r_r_amp = project_circular(res.rx, res.ry, direction=1)
         t_l_amp, t_r_amp = project_circular(res.tx, res.ty, direction=1)
 
         R_LCP.append(np.sum(np.abs(r_l_amp) ** 2))
