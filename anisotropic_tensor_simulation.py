@@ -89,23 +89,34 @@ def main() -> None:
 
     # 提取每个分量的反射和透射（LCP入射和RCP入射）
     def extract_LR_RT(results):
-        # 用物理正交投影方式提取LCP/RCP分量
-        def proj_power(E, handedness='LCP'):
-            # E: [Ex, Ey, ...]
-            if handedness == 'LCP':
-                comp = (E[0] - 1j * E[1]) / np.sqrt(2)
-            else:
-                comp = (E[0] + 1j * E[1]) / np.sqrt(2)
-            return np.abs(comp)**2
+        """Project the complex field amplitudes onto RCWA's circular basis."""
+
+        def circular_powers(E_x: np.ndarray, E_y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            """Return (LCP power, RCP power) for the provided transverse field components."""
+            E_x = np.asarray(E_x)
+            E_y = np.asarray(E_y)
+            l_amp = (E_y - 1j * E_x) / np.sqrt(2.0)
+            r_amp = (E_y + 1j * E_x) / np.sqrt(2.0)
+            return np.abs(l_amp) ** 2, np.abs(r_amp) ** 2
+
         R_LCP, R_RCP, T_LCP, T_RCP = [], [], [], []
+
         for res in results:
-            r = res.r_complex()
-            t = res.t_complex()
-            R_LCP.append(proj_power(r, 'LCP'))
-            R_RCP.append(proj_power(r, 'RCP'))
-            T_LCP.append(proj_power(t, 'LCP'))
-            T_RCP.append(proj_power(t, 'RCP'))
-        return np.array(R_LCP), np.array(R_RCP), np.array(T_LCP), np.array(T_RCP)
+            r_l, r_r = circular_powers(res.rx, res.ry)
+            t_l, t_r = circular_powers(res.tx, res.ty)
+
+            # Flatten in case the solver returns per-order arrays and accumulate total power.
+            R_LCP.append(np.sum(r_l))
+            R_RCP.append(np.sum(r_r))
+            T_LCP.append(np.sum(t_l))
+            T_RCP.append(np.sum(t_r))
+
+        return (
+            np.asarray(R_LCP, dtype=float),
+            np.asarray(R_RCP, dtype=float),
+            np.asarray(T_LCP, dtype=float),
+            np.asarray(T_RCP, dtype=float),
+        )
 
     lcp_R_LCP, lcp_R_RCP, lcp_T_LCP, lcp_T_RCP = extract_LR_RT(lcp_grid.data)
     rcp_R_LCP, rcp_R_RCP, rcp_T_LCP, rcp_T_RCP = extract_LR_RT(rcp_grid.data)
