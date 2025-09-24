@@ -4,7 +4,7 @@ from n_tensor_test import epsilon_tensor_dispersion
 
 
 # 参数区
-h = nm(150)  # nm, 高度
+h = nm(200)  # nm, 高度 150
 w = nm(100)  # nm, 宽度
 L1 = nm(310)  # nm, 棒1长度
 L2 = nm(360)  # nm, 棒2长度
@@ -49,7 +49,7 @@ stack = Stack(
 
 
 import pandas as pd
-wavelengths = np.linspace(nm(500), nm(1000), 500)  # 米
+wavelengths = np.linspace(nm(400), nm(800), 100)  # 米
 TTot_list = []
 RTot_list = []
 
@@ -70,6 +70,7 @@ for wl in wavelengths:
     hBN_tensor.source = src
     rod1 = Rectangle(center=(0.5, 0.25), width=w_norm, height=L1_norm)
     rod2 = Rectangle(center=(0.5, 0.75), width=w_norm, height=L2_norm)
+    
     patterned = PatternedLayer(
         thickness=h,
         lattice=lat,
@@ -79,7 +80,7 @@ for wl in wavelengths:
     stack = Stack(
         substrate=substrate,
         superstrate=superstrate,
-        layers=[layer],
+        layers=[patterned],
     )
     solver = Solver(layer_stack=stack, source=src, n_harmonics=(7, 7))
     result = solver.solve(wavelength=[wl])
