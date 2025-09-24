@@ -449,16 +449,43 @@ class EigensolverTensorAdapter:
 
         # Arrange eigenvectors into electric and magnetic partitions
         n = P.shape[0]
-        W = eigenVectors[:n, :]
-        V = eigenVectors[n:, :]
+        W_full = eigenVectors[:n, :]
+        V_full = eigenVectors[n:, :]
 
-        Lambda_diag = np.array(eigenValues, dtype=complex)
-        for i, val in enumerate(Lambda_diag):
-            if np.imag(val) < 0:
-                Lambda_diag[i] = -val
+        # Select a square subset of modes so that the scattering formulation, which
+        # assumes 2N tangential field components, receives an invertible matrix.
+        # The tensor eigenproblem returns forward/backward solutions in ± pairs; we
+        # keep those with positive imaginary propagation constants (decaying or
+        # forward waves) and fall back to the remaining modes if necessary.
+        imag_vals = np.imag(eigenValues)
+        tol = 1e-9
+
+        pos_idx = np.where(imag_vals > tol)[0]
+        zero_idx = np.where(np.abs(imag_vals) <= tol)[0]
+        neg_idx = np.where(imag_vals < -tol)[0]
+
+        # Sort each group by descending imaginary part magnitude to pick the most
+        # physically relevant modes first.
+        pos_sorted = pos_idx[np.argsort(imag_vals[pos_idx])[::-1]] if pos_idx.size else np.array([], dtype=int)
+        zero_sorted = zero_idx[np.argsort(np.abs(eigenValues[zero_idx]))] if zero_idx.size else np.array([], dtype=int)
+        neg_sorted = neg_idx[np.argsort(np.abs(imag_vals[neg_idx]))] if neg_idx.size else np.array([], dtype=int)
+
+        ordered_indices = np.concatenate((pos_sorted, zero_sorted, neg_sorted))
+        if ordered_indices.size < n:
+            raise RuntimeError(
+                "Tensor eigensolver did not produce enough modes to span the "
+                f"tangential field space (needed {n}, got {ordered_indices.size})."
+            )
+
+        selected = ordered_indices[:n]
+
+        W = W_full[:, selected]
+        V = V_full[:, selected]
+
+        Lambda_diag = np.array(eigenValues[selected], dtype=complex)
         Lambda = np.diag(Lambda_diag)
 
-        return eigenValues, W, Lambda, V
+        return eigenValues[selected], W, Lambda, V
 
 
 # Convenience functions for easy integration
