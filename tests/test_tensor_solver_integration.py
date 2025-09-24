@@ -14,7 +14,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from rcwa.core.adapters import TensorToConvolutionAdapter, LayerTensorAdapter, EigensolverTensorAdapter
-from rcwa import TensorMaterial, Source, Layer, LayerStack, Solver
+from rcwa import TensorMaterial, Material, Source, Layer, LayerStack, Solver
 
 
 class TestTensorAdapters:
@@ -227,7 +227,7 @@ class TestTensorSolverIntegration:
         """Test energy conservation for tensor materials."""
         stack, source = simple_tensor_stack
         solver = Solver(stack, source, n_harmonics=1)
-        
+
         try:
             solver._initialize()
             solver._inner_s_matrix()
@@ -247,6 +247,66 @@ class TestTensorSolverIntegration:
                 
         except Exception as e:
             pytest.skip(f"Energy conservation test not fully working: {e}")
+
+    def test_diagonal_tensor_matches_isotropic(self):
+        """Diagonal tensor layers should reduce to the isotropic solution."""
+        wavelength = 1.2
+        theta = 0.35
+        phi = 0.1
+
+        eps_val = 2.4
+        thickness = 0.37
+
+        tensor_source = Source(wavelength=wavelength, theta=theta, phi=phi)
+        tensor_material = TensorMaterial.from_diagonal(eps_val, eps_val, eps_val, source=tensor_source)
+
+        superstrate = Material(er=1.0)
+        substrate = Material(er=2.25)
+
+        tensor_layer = Layer(tensor_material=tensor_material, thickness=thickness)
+        tensor_stack = LayerStack(tensor_layer, superstrate=superstrate, substrate=substrate)
+
+        iso_layer = Layer(material=Material(er=eps_val), thickness=thickness)
+        iso_stack = LayerStack(iso_layer, superstrate=superstrate, substrate=substrate)
+
+        tensor_solver = Solver(tensor_stack, Source(wavelength=wavelength, theta=theta, phi=phi), n_harmonics=1)
+        iso_solver = Solver(iso_stack, Source(wavelength=wavelength, theta=theta, phi=phi), n_harmonics=1)
+
+        tensor_result = tensor_solver.solve()
+        iso_result = iso_solver.solve()
+
+        assert_allclose(tensor_result.RTot, iso_result.RTot, atol=1e-6)
+        assert_allclose(tensor_result.TTot, iso_result.TTot, atol=1e-6)
+        assert_allclose(tensor_result.tx, iso_result.tx, atol=1e-6)
+        assert_allclose(tensor_result.ty, iso_result.ty, atol=1e-6)
+
+    def test_full_tensor_energy_conservation(self):
+        """Stacks with full anisotropic tensors conserve energy within tolerance."""
+        wavelength = 1.0
+        theta = 0.4
+        phi = 0.2
+
+        eps_tensor = np.array([
+            [2.3, 0.35, 0.18],
+            [0.35, 1.9, -0.12],
+            [0.18, -0.12, 2.6],
+        ], dtype=complex)
+
+        tensor_material = TensorMaterial(epsilon_tensor=eps_tensor, mu_tensor=np.eye(3))
+
+        superstrate = Material(er=1.0)
+        substrate = Material(er=1.7)
+
+        layer = Layer(tensor_material=tensor_material, thickness=0.42)
+        stack = LayerStack(layer, superstrate=superstrate, substrate=substrate)
+
+        solver = Solver(stack, Source(wavelength=wavelength, theta=theta, phi=phi), n_harmonics=1)
+        result = solver.solve()
+
+        assert np.isfinite(result.RTot)
+        assert np.isfinite(result.TTot)
+        assert np.isfinite(result.conservation)
+        assert_allclose(result.RTot + result.TTot, 1.0, atol=1e-3)
 
 
 class TestTensorPhysicalProperties:

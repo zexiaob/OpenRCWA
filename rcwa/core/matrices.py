@@ -365,13 +365,17 @@ class MatrixCalculator:
             # Handle tensor materials with proper eigensolver
             if hasattr(self, 'is_anisotropic') and self.is_anisotropic:
                 from .adapters import EigensolverTensorAdapter
-                eigenValues, W, Lambda = EigensolverTensorAdapter.solve_tensor_eigenproblem(P, Q)
+                eigenValues, W, Lambda, V_tensor = EigensolverTensorAdapter.solve_tensor_eigenproblem(self, P, Q)
             else:
                 eigenValues, W = eig(OmegaSquared)
                 Lambda = np.diag(sqrt(eigenValues))
-            
+
             LambdaInverse = np.diag(np.reciprocal(np.diag(Lambda)))
-            V = Q @ W @ LambdaInverse
+            if hasattr(self, 'is_anisotropic') and self.is_anisotropic:
+                # Use magnetic eigenvectors provided by the tensor eigensolver
+                V = V_tensor
+            else:
+                V = Q @ W @ LambdaInverse
             X = matrixExponentiate(-Lambda * self.source.k0 * self.thickness)
             return (V, W, Lambda, X)
 
