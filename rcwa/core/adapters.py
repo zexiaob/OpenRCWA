@@ -228,26 +228,48 @@ class LayerTensorAdapter:
                 1,
             )
 
-        def _component(prefix: str, comp: str) -> ArrayLike:
+        def _expand_to_square(matrix: np.ndarray, size: int) -> np.ndarray:
+            """Broadcast scalar or 1×1 matrices to the requested square size."""
+
+            if matrix.shape == (size, size):
+                return matrix
+
+            if matrix.ndim == 0:
+                value = complex(matrix.item())
+                return np.array([[value]], dtype=complex) if size == 1 else value * np.identity(size, dtype=complex)
+
+            if matrix.shape == (1, 1):
+                value = complex(matrix[0, 0])
+                return np.array([[value]], dtype=complex) if size == 1 else value * np.identity(size, dtype=complex)
+
+            if matrix.shape == (1,) and size == 1:
+                return np.array([[complex(matrix[0])]], dtype=complex)
+
+            raise ValueError(
+                f"Cannot expand matrix with shape {matrix.shape} to {size}x{size} square matrix."
+            )
+
+        def _component(prefix: str, comp: str, size: int) -> ArrayLike:
             key = f'{prefix}_{comp}'
             mat = conv.get(key)
             if mat is None:
-                # Default: identity for diagonal terms, zero otherwise
                 axes = comp[0] == comp[1]
-                size = 1
-                if isinstance(Kx, np.ndarray):
-                    size = Kx.shape[0]
                 if axes:
                     return np.identity(size, dtype=complex)
                 return np.zeros((size, size), dtype=complex)
+
             mat = np.array(mat, dtype=complex)
             if mat.ndim == 0:
-                size = 1
-                if isinstance(Kx, np.ndarray):
-                    size = Kx.shape[0]
-                if size == 1:
-                    return np.array([[mat]], dtype=complex)
-                return mat * np.identity(size, dtype=complex)
+                value = complex(mat.item())
+                return np.array([[value]], dtype=complex) if size == 1 else value * np.identity(size, dtype=complex)
+            if mat.shape == (1, 1) and size > 1:
+                return complex(mat[0, 0]) * np.identity(size, dtype=complex)
+            if mat.shape == (1,) and size == 1:
+                return np.array([[complex(mat[0])]], dtype=complex)
+            if mat.shape != (size, size):
+                raise ValueError(
+                    f"Tensor component {key} has incompatible shape {mat.shape}; expected {(size, size)}."
+                )
             return mat
 
         if not isinstance(Kx, np.ndarray):
@@ -259,25 +281,29 @@ class LayerTensorAdapter:
         else:
             Ky_mat = np.array(Ky, dtype=complex)
 
-        exx = _component('er', 'xx')
-        exy = _component('er', 'xy')
-        exz = _component('er', 'xz')
-        eyx = _component('er', 'yx')
-        eyy = _component('er', 'yy')
-        eyz = _component('er', 'yz')
-        ezx = _component('er', 'zx')
-        ezy = _component('er', 'zy')
-        ezz = _component('er', 'zz')
+        target_size = max(Kx_mat.shape[0], Ky_mat.shape[0])
+        Kx_mat = _expand_to_square(Kx_mat, target_size)
+        Ky_mat = _expand_to_square(Ky_mat, target_size)
 
-        mxx = _component('ur', 'xx')
-        mxy = _component('ur', 'xy')
-        mxz = _component('ur', 'xz')
-        myx = _component('ur', 'yx')
-        myy = _component('ur', 'yy')
-        myz = _component('ur', 'yz')
-        mzx = _component('ur', 'zx')
-        mzy = _component('ur', 'zy')
-        mzz = _component('ur', 'zz')
+        exx = _component('er', 'xx', target_size)
+        exy = _component('er', 'xy', target_size)
+        exz = _component('er', 'xz', target_size)
+        eyx = _component('er', 'yx', target_size)
+        eyy = _component('er', 'yy', target_size)
+        eyz = _component('er', 'yz', target_size)
+        ezx = _component('er', 'zx', target_size)
+        ezy = _component('er', 'zy', target_size)
+        ezz = _component('er', 'zz', target_size)
+
+        mxx = _component('ur', 'xx', target_size)
+        mxy = _component('ur', 'xy', target_size)
+        mxz = _component('ur', 'xz', target_size)
+        myx = _component('ur', 'yx', target_size)
+        myy = _component('ur', 'yy', target_size)
+        myz = _component('ur', 'yz', target_size)
+        mzx = _component('ur', 'zx', target_size)
+        mzy = _component('ur', 'zy', target_size)
+        mzz = _component('ur', 'zz', target_size)
 
         eps_tt = np.block([[exx, exy], [eyx, eyy]])
         eps_tz = np.vstack((exz, eyz))
