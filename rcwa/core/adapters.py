@@ -228,86 +228,101 @@ class LayerTensorAdapter:
                 1,
             )
 
-        def _component(prefix: str, comp: str) -> ArrayLike:
+        def _as_square(matrix: ArrayLike, size: int) -> np.ndarray:
+            """Return ``matrix`` as a ``size×size`` complex ndarray.
+
+            Tensor convolution data are frequently represented either as scalars,
+            ``1×1`` arrays, or full convolution matrices.  This helper normalises
+            those representations so the algebra below can treat every component in
+            a uniform way.  Scalars are broadcast to diagonal matrices, while
+            missing off-diagonal terms default to zero (and to unity on the
+            diagonal to preserve isotropic behaviour when only ``ε`` or ``μ`` are
+            provided).
+            """
+
+            arr = np.array(matrix, dtype=complex)
+
+            if arr.size == 0:
+                return np.zeros((size, size), dtype=complex)
+
+            if arr.ndim == 0 or arr.shape == (1,) or arr.shape == (1, 1):
+                value = complex(arr.reshape(1)[0])
+                return value * np.identity(size, dtype=complex)
+
+            if arr.shape == (size, size):
+                return arr
+
+            raise ValueError(
+                f"Tensor component with shape {arr.shape} cannot be broadcast to {(size, size)}"
+            )
+
+        def _component(prefix: str, comp: str, size: int) -> np.ndarray:
             key = f'{prefix}_{comp}'
             mat = conv.get(key)
             if mat is None:
-                # Default: identity for diagonal terms, zero otherwise
-                axes = comp[0] == comp[1]
-                size = 1
-                if isinstance(Kx, np.ndarray):
-                    size = Kx.shape[0]
-                if axes:
+                if comp[0] == comp[1]:
                     return np.identity(size, dtype=complex)
                 return np.zeros((size, size), dtype=complex)
-            mat = np.array(mat, dtype=complex)
-            if mat.ndim == 0:
-                size = 1
-                if isinstance(Kx, np.ndarray):
-                    size = Kx.shape[0]
-                if size == 1:
-                    return np.array([[mat]], dtype=complex)
-                return mat * np.identity(size, dtype=complex)
-            return mat
+            return _as_square(mat, size)
 
         if not isinstance(Kx, np.ndarray):
             Kx_mat = np.array([[Kx]], dtype=complex)
         else:
             Kx_mat = np.array(Kx, dtype=complex)
+
         if not isinstance(Ky, np.ndarray):
             Ky_mat = np.array([[Ky]], dtype=complex)
         else:
             Ky_mat = np.array(Ky, dtype=complex)
 
-        exx = _component('er', 'xx')
-        exy = _component('er', 'xy')
-        exz = _component('er', 'xz')
-        eyx = _component('er', 'yx')
-        eyy = _component('er', 'yy')
-        eyz = _component('er', 'yz')
-        ezx = _component('er', 'zx')
-        ezy = _component('er', 'zy')
-        ezz = _component('er', 'zz')
+        target_size = max(Kx_mat.shape[0], Ky_mat.shape[0])
 
-        mxx = _component('ur', 'xx')
-        mxy = _component('ur', 'xy')
-        mxz = _component('ur', 'xz')
-        myx = _component('ur', 'yx')
-        myy = _component('ur', 'yy')
-        myz = _component('ur', 'yz')
-        mzx = _component('ur', 'zx')
-        mzy = _component('ur', 'zy')
-        mzz = _component('ur', 'zz')
+        Kx_mat = _as_square(Kx_mat, target_size)
+        Ky_mat = _as_square(Ky_mat, target_size)
+
+        exx = _component('er', 'xx', target_size)
+        exy = _component('er', 'xy', target_size)
+        exz = _component('er', 'xz', target_size)
+        eyx = _component('er', 'yx', target_size)
+        eyy = _component('er', 'yy', target_size)
+        eyz = _component('er', 'yz', target_size)
+        ezx = _component('er', 'zx', target_size)
+        ezy = _component('er', 'zy', target_size)
+        ezz = _component('er', 'zz', target_size)
+
+        mxx = _component('ur', 'xx', target_size)
+        mxy = _component('ur', 'xy', target_size)
+        mxz = _component('ur', 'xz', target_size)
+        myx = _component('ur', 'yx', target_size)
+        myy = _component('ur', 'yy', target_size)
+        myz = _component('ur', 'yz', target_size)
+        mzx = _component('ur', 'zx', target_size)
+        mzy = _component('ur', 'zy', target_size)
+        mzz = _component('ur', 'zz', target_size)
 
         eps_tt = np.block([[exx, exy], [eyx, eyy]])
         eps_tz = np.vstack((exz, eyz))
         eps_zt = np.hstack((ezx, ezy))
-        eps_zz = ezz if isinstance(ezz, np.ndarray) and ezz.ndim == 2 else np.array([[ezz]])
-
         mu_tt = np.block([[mxx, mxy], [myx, myy]])
         mu_tz = np.vstack((mxz, myz))
         mu_zt = np.hstack((mzx, mzy))
-        mu_zz = mzz if isinstance(mzz, np.ndarray) and mzz.ndim == 2 else np.array([[mzz]])
 
-        try:
-            eps_zz_inv = np.linalg.inv(eps_zz)
-        except np.linalg.LinAlgError:
-            eps_zz_inv = np.linalg.pinv(eps_zz)
+        def _safe_inverse(matrix: np.ndarray) -> np.ndarray:
+            try:
+                return np.linalg.inv(matrix)
+            except np.linalg.LinAlgError:
+                return np.linalg.pinv(matrix)
 
-        try:
-            mu_zz_inv = np.linalg.inv(mu_zz)
-        except np.linalg.LinAlgError:
-            mu_zz_inv = np.linalg.pinv(mu_zz)
+        eps_zz_inv = _safe_inverse(ezz)
+        mu_zz_inv = _safe_inverse(mzz)
 
         C = np.hstack((-Ky_mat, Kx_mat))
         S = np.vstack((Kx_mat, Ky_mat))
 
-        size_n = Kx_mat.shape[0]
+        size_n = target_size
+        zero = np.zeros((size_n, size_n), dtype=complex)
         identity = np.identity(size_n, dtype=complex)
-        J = np.block([
-            [np.zeros((size_n, size_n), dtype=complex), identity],
-            [-identity, np.zeros((size_n, size_n), dtype=complex)]
-        ])
+        J = np.block([[zero, identity], [-identity, zero]])
 
         mu_eff = mu_tt - mu_tz @ mu_zz_inv @ mu_zt
         eps_eff = eps_tt - eps_tz @ eps_zz_inv @ eps_zt
@@ -449,16 +464,43 @@ class EigensolverTensorAdapter:
 
         # Arrange eigenvectors into electric and magnetic partitions
         n = P.shape[0]
-        W = eigenVectors[:n, :]
-        V = eigenVectors[n:, :]
+        W_full = eigenVectors[:n, :]
+        V_full = eigenVectors[n:, :]
 
-        Lambda_diag = np.array(eigenValues, dtype=complex)
-        for i, val in enumerate(Lambda_diag):
-            if np.imag(val) < 0:
-                Lambda_diag[i] = -val
+        # Select a square subset of modes so that the scattering formulation, which
+        # assumes 2N tangential field components, receives an invertible matrix.
+        # The tensor eigenproblem returns forward/backward solutions in ± pairs; we
+        # keep those with positive imaginary propagation constants (decaying or
+        # forward waves) and fall back to the remaining modes if necessary.
+        imag_vals = np.imag(eigenValues)
+        tol = 1e-9
+
+        pos_idx = np.where(imag_vals > tol)[0]
+        zero_idx = np.where(np.abs(imag_vals) <= tol)[0]
+        neg_idx = np.where(imag_vals < -tol)[0]
+
+        # Sort each group by descending imaginary part magnitude to pick the most
+        # physically relevant modes first.
+        pos_sorted = pos_idx[np.argsort(imag_vals[pos_idx])[::-1]] if pos_idx.size else np.array([], dtype=int)
+        zero_sorted = zero_idx[np.argsort(np.abs(eigenValues[zero_idx]))] if zero_idx.size else np.array([], dtype=int)
+        neg_sorted = neg_idx[np.argsort(np.abs(imag_vals[neg_idx]))] if neg_idx.size else np.array([], dtype=int)
+
+        ordered_indices = np.concatenate((pos_sorted, zero_sorted, neg_sorted))
+        if ordered_indices.size < n:
+            raise RuntimeError(
+                "Tensor eigensolver did not produce enough modes to span the "
+                f"tangential field space (needed {n}, got {ordered_indices.size})."
+            )
+
+        selected = ordered_indices[:n]
+
+        W = W_full[:, selected]
+        V = V_full[:, selected]
+
+        Lambda_diag = np.array(eigenValues[selected], dtype=complex)
         Lambda = np.diag(Lambda_diag)
 
-        return eigenValues, W, Lambda, V
+        return eigenValues[selected], W, Lambda, V
 
 
 # Convenience functions for easy integration
