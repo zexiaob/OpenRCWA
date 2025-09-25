@@ -228,62 +228,57 @@ class LayerTensorAdapter:
                 1,
             )
 
-        def _expand_to_square(matrix: np.ndarray, size: int) -> np.ndarray:
-            """Broadcast scalar or 1×1 matrices to the requested square size."""
+        def _as_square(matrix: ArrayLike, size: int) -> np.ndarray:
+            """Return ``matrix`` as a ``size×size`` complex ndarray.
 
-            if matrix.shape == (size, size):
-                return matrix
+            Tensor convolution data are frequently represented either as scalars,
+            ``1×1`` arrays, or full convolution matrices.  This helper normalises
+            those representations so the algebra below can treat every component in
+            a uniform way.  Scalars are broadcast to diagonal matrices, while
+            missing off-diagonal terms default to zero (and to unity on the
+            diagonal to preserve isotropic behaviour when only ``ε`` or ``μ`` are
+            provided).
+            """
 
-            if matrix.ndim == 0:
-                value = complex(matrix.item())
-                return np.array([[value]], dtype=complex) if size == 1 else value * np.identity(size, dtype=complex)
+            arr = np.array(matrix, dtype=complex)
 
-            if matrix.shape == (1, 1):
-                value = complex(matrix[0, 0])
-                return np.array([[value]], dtype=complex) if size == 1 else value * np.identity(size, dtype=complex)
+            if arr.size == 0:
+                return np.zeros((size, size), dtype=complex)
 
-            if matrix.shape == (1,) and size == 1:
-                return np.array([[complex(matrix[0])]], dtype=complex)
+            if arr.ndim == 0 or arr.shape == (1,) or arr.shape == (1, 1):
+                value = complex(arr.reshape(1)[0])
+                return value * np.identity(size, dtype=complex)
+
+            if arr.shape == (size, size):
+                return arr
 
             raise ValueError(
-                f"Cannot expand matrix with shape {matrix.shape} to {size}x{size} square matrix."
+                f"Tensor component with shape {arr.shape} cannot be broadcast to {(size, size)}"
             )
 
-        def _component(prefix: str, comp: str, size: int) -> ArrayLike:
+        def _component(prefix: str, comp: str, size: int) -> np.ndarray:
             key = f'{prefix}_{comp}'
             mat = conv.get(key)
             if mat is None:
-                axes = comp[0] == comp[1]
-                if axes:
+                if comp[0] == comp[1]:
                     return np.identity(size, dtype=complex)
                 return np.zeros((size, size), dtype=complex)
-
-            mat = np.array(mat, dtype=complex)
-            if mat.ndim == 0:
-                value = complex(mat.item())
-                return np.array([[value]], dtype=complex) if size == 1 else value * np.identity(size, dtype=complex)
-            if mat.shape == (1, 1) and size > 1:
-                return complex(mat[0, 0]) * np.identity(size, dtype=complex)
-            if mat.shape == (1,) and size == 1:
-                return np.array([[complex(mat[0])]], dtype=complex)
-            if mat.shape != (size, size):
-                raise ValueError(
-                    f"Tensor component {key} has incompatible shape {mat.shape}; expected {(size, size)}."
-                )
-            return mat
+            return _as_square(mat, size)
 
         if not isinstance(Kx, np.ndarray):
             Kx_mat = np.array([[Kx]], dtype=complex)
         else:
             Kx_mat = np.array(Kx, dtype=complex)
+
         if not isinstance(Ky, np.ndarray):
             Ky_mat = np.array([[Ky]], dtype=complex)
         else:
             Ky_mat = np.array(Ky, dtype=complex)
 
         target_size = max(Kx_mat.shape[0], Ky_mat.shape[0])
-        Kx_mat = _expand_to_square(Kx_mat, target_size)
-        Ky_mat = _expand_to_square(Ky_mat, target_size)
+
+        Kx_mat = _as_square(Kx_mat, target_size)
+        Ky_mat = _as_square(Ky_mat, target_size)
 
         exx = _component('er', 'xx', target_size)
         exy = _component('er', 'xy', target_size)
@@ -308,32 +303,26 @@ class LayerTensorAdapter:
         eps_tt = np.block([[exx, exy], [eyx, eyy]])
         eps_tz = np.vstack((exz, eyz))
         eps_zt = np.hstack((ezx, ezy))
-        eps_zz = ezz if isinstance(ezz, np.ndarray) and ezz.ndim == 2 else np.array([[ezz]])
-
         mu_tt = np.block([[mxx, mxy], [myx, myy]])
         mu_tz = np.vstack((mxz, myz))
         mu_zt = np.hstack((mzx, mzy))
-        mu_zz = mzz if isinstance(mzz, np.ndarray) and mzz.ndim == 2 else np.array([[mzz]])
 
-        try:
-            eps_zz_inv = np.linalg.inv(eps_zz)
-        except np.linalg.LinAlgError:
-            eps_zz_inv = np.linalg.pinv(eps_zz)
+        def _safe_inverse(matrix: np.ndarray) -> np.ndarray:
+            try:
+                return np.linalg.inv(matrix)
+            except np.linalg.LinAlgError:
+                return np.linalg.pinv(matrix)
 
-        try:
-            mu_zz_inv = np.linalg.inv(mu_zz)
-        except np.linalg.LinAlgError:
-            mu_zz_inv = np.linalg.pinv(mu_zz)
+        eps_zz_inv = _safe_inverse(ezz)
+        mu_zz_inv = _safe_inverse(mzz)
 
         C = np.hstack((-Ky_mat, Kx_mat))
         S = np.vstack((Kx_mat, Ky_mat))
 
-        size_n = Kx_mat.shape[0]
+        size_n = target_size
+        zero = np.zeros((size_n, size_n), dtype=complex)
         identity = np.identity(size_n, dtype=complex)
-        J = np.block([
-            [np.zeros((size_n, size_n), dtype=complex), identity],
-            [-identity, np.zeros((size_n, size_n), dtype=complex)]
-        ])
+        J = np.block([[zero, identity], [-identity, zero]])
 
         mu_eff = mu_tt - mu_tz @ mu_zz_inv @ mu_zt
         eps_eff = eps_tt - eps_tz @ eps_zz_inv @ eps_zt
