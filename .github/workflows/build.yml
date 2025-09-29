@@ -1,0 +1,79 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+    branches:
+      - master
+      - develop
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 5
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+        cache: 'pipenv'
+
+    - name: Install pipenv
+      run: pip install pipenv
+
+    - name: Install dependencies
+      run: pipenv install --ignore-pipfile
+
+    - name: Test with pytest, generate coverage report
+      run: pipenv run test
+
+    - name: Upload coverage report to codecov
+      uses: codecov/codecov-action@v1
+      with: 
+        token: ${{ secrets.codecov_token }}
+        files: ./coverage.xml
+        flags: unittests
+        env_vars: OS,PYTHON
+        name: codecov-umbrella
+        fail_ci_if_error: true
+        path_to_write_report: ./coverage/codecov_report.txt
+        verbose: true
+
+    - name: Build python package
+      run: pipenv run build
+
+    - name: Deploy to test PyPi
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        user: __token__
+        password: ${{ secrets.test_pypi_token }}
+        repository_url: https://test.pypi.org/legacy/
+        verbose: true
+
+    - name: Download and install from TestPyPi
+      run:
+        pip install --index-url https://test.pypi.org/simple --extra-index-url https://pypi.org/simple rcwa;
+
+    - name: Run testPyPi test suite
+      run: 
+        python3 -m rcwa.test.pytest_runner
+
+    - name: Deploy to PyPi
+      uses: pypa/gh-action-pypi-publish@master
+      if: github.ref == 'refs/heads/master'
+      with:
+        user: __token__
+        password: ${{ secrets.pypi_token }}
+        verbose: true
+
+    - name: Download aand install from PyPi
+      run: 
+        pip uninstall -y rcwa;
+        pip install rcwa;
+
+    - name: Run PyPi test suite
+      run: 
+        python3 -m rcwa.test.pytest_runner

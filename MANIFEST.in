@@ -1,0 +1,6 @@
+recursive-include source *
+recursive-include test *
+recursive-include nkData *
+recursive-include netlist *
+recursive-include docs *
+recursive-include examples *
