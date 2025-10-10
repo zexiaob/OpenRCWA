@@ -42,9 +42,9 @@ from rcwa.solve import LCP, RCP, simulate
 
 def build_stack(thickness_m: float, n_x: float, n_y: float, n_z: float) -> Stack:
     """Create the anisotropic layer stack surrounded by air."""
-    eps_xx = n_x ** 2
-    eps_yy = n_y ** 2
-    eps_zz = n_z ** 2
+    eps_xx = -12 + 0.4298j
+    eps_yy = 6.0847 + 0.5268j
+    eps_zz = 3.8286 + 0.0021j
 
     tensor_material = TensorMaterial.from_diagonal(
         eps_xx,
@@ -55,7 +55,7 @@ def build_stack(thickness_m: float, n_x: float, n_y: float, n_z: float) -> Stack
 
     anisotropic_layer = Layer(tensor_material=tensor_material, thickness=thickness_m)
     air = Air()
-    stack = Stack(anisotropic_layer, superstrate=air, substrate=air)
+    stack = Stack(anisotropic_layer.rotated([0,0,0]), superstrate=air, substrate=air)
     # Enable rigorous tensor eigensolver by default for this script
     stack.enable_tensor_eigensolver(True)
     return stack
@@ -126,7 +126,7 @@ def extract_circular_channels(results) -> Tuple[np.ndarray, np.ndarray, np.ndarr
 def main(save_plots: bool = False) -> None:
     repo_root = Path(__file__).resolve().parent
 
-    thickness = nm(500.0)
+    thickness = nm(50.0)
     n_x, n_y, n_z = 1.5, 2.0, 1.5  # assume optic axis aligned with z and matches n_x
 
     stack = build_stack(thickness, n_x, n_y, n_z)
@@ -150,17 +150,33 @@ def main(save_plots: bool = False) -> None:
     lcp_R_LCP, lcp_R_RCP, lcp_T_LCP, lcp_T_RCP = extract_circular_channels(lcp_grid.data)
     rcp_R_LCP, rcp_R_RCP, rcp_T_LCP, rcp_T_RCP = extract_circular_channels(rcp_grid.data)
 
+    # Total transmitted/reflected power for each incident helicity
+    lcp_T_total = lcp_T_LCP + lcp_T_RCP
+    rcp_T_total = rcp_T_LCP + rcp_T_RCP
+    lcp_R_total = lcp_R_LCP + lcp_R_RCP
+    rcp_R_total = rcp_R_LCP + rcp_R_RCP
+
+    # Circular dichroism (difference between LCP and RCP incident total power)
+    cd_transmission = lcp_T_total - rcp_T_total
+    cd_reflection = lcp_R_total - rcp_R_total
+
     dataframe = pd.DataFrame(
         {
             "wavelength_nm": wavelengths,
             "LCP_inc_R_LCP": lcp_R_LCP,
             "LCP_inc_R_RCP": lcp_R_RCP,
+            "LCP_inc_R_total": lcp_R_total,
             "LCP_inc_T_LCP": lcp_T_LCP,
             "LCP_inc_T_RCP": lcp_T_RCP,
+            "LCP_inc_T_total": lcp_T_total,
             "RCP_inc_R_LCP": rcp_R_LCP,
             "RCP_inc_R_RCP": rcp_R_RCP,
+            "RCP_inc_R_total": rcp_R_total,
             "RCP_inc_T_LCP": rcp_T_LCP,
             "RCP_inc_T_RCP": rcp_T_RCP,
+            "RCP_inc_T_total": rcp_T_total,
+            "CD_transmission": cd_transmission,
+            "CD_reflection": cd_reflection,
         }
     )
 
@@ -168,42 +184,21 @@ def main(save_plots: bool = False) -> None:
     dataframe.to_csv(csv_path, index=False)
 
     if save_plots:
-        # Plot for LCP incidence (4 lines)
         plt.figure(figsize=(8, 5))
-        plt.plot(wavelengths, lcp_T_LCP, label="LCP→LCP Transmission", color="#1f77b4")
-        plt.plot(wavelengths, lcp_T_RCP, label="LCP→RCP Transmission", color="#2ca02c")
-        plt.plot(wavelengths, lcp_R_LCP, label="LCP→LCP Reflection", color="#ff7f0e")
-        plt.plot(wavelengths, lcp_R_RCP, label="LCP→RCP Reflection", color="#d62728")
-        plt.title("Anisotropic layer response for LCP incidence")
+        plt.plot(wavelengths, cd_transmission, label="Transmission CD", color="#1f77b4", linewidth=2)
+        plt.plot(wavelengths, cd_reflection, label="Reflection CD", color="#d62728", linewidth=2)
+        plt.axhline(0.0, color="#333333", linewidth=1, linestyle=":", alpha=0.5)
+        plt.title("Circular Dichroism of Anisotropic Layer")
         plt.xlabel("Wavelength (nm)")
-        plt.ylabel("Power fraction")
-        plt.ylim(0, 1.05)
+        plt.ylabel("CD (LCP − RCP)")
         plt.grid(True, alpha=0.3)
         plt.legend()
-        lcp_fig_path = repo_root / "lcp_incidence_rt.png"
+        cd_fig_path = repo_root / "circular_dichroism.png"
         plt.tight_layout()
-        plt.savefig(lcp_fig_path, dpi=300)
+        plt.savefig(cd_fig_path, dpi=300)
         plt.close()
 
-        # Plot for RCP incidence (4 lines)
-        plt.figure(figsize=(8, 5))
-        plt.plot(wavelengths, rcp_T_LCP, label="RCP→LCP Transmission", color="#1f77b4", linestyle="--")
-        plt.plot(wavelengths, rcp_T_RCP, label="RCP→RCP Transmission", color="#2ca02c", linestyle="--")
-        plt.plot(wavelengths, rcp_R_LCP, label="RCP→LCP Reflection", color="#ff7f0e", linestyle="--")
-        plt.plot(wavelengths, rcp_R_RCP, label="RCP→RCP Reflection", color="#d62728", linestyle="--")
-        plt.title("Anisotropic layer response for RCP incidence")
-        plt.xlabel("Wavelength (nm)")
-        plt.ylabel("Power fraction")
-        plt.ylim(0, 1.05)
-        plt.grid(True, alpha=0.3)
-        plt.legend()
-        rcp_fig_path = repo_root / "rcp_incidence_rt.png"
-        plt.tight_layout()
-        plt.savefig(rcp_fig_path, dpi=300)
-        plt.close()
-
-        print(f"Saved LCP figure to {lcp_fig_path}")
-        print(f"Saved RCP figure to {rcp_fig_path}")
+        print(f"Saved CD figure to {cd_fig_path}")
 
     print(f"Saved CSV to {csv_path}")
 
